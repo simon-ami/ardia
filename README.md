@@ -9,6 +9,8 @@
   Free and open source. Ads and trackers stay out.
 </p>
 
+> **Personal Ardia fork.** Contains custom UI/UX changes and is not an official release. For the official browser, visit [mantrakp04/ardia](https://github.com/mantrakp04/ardia).
+
 <h3 align="center">
   <a href="https://github.com/mantrakp04/ardia/releases/download/v0.2.44/Ardia-0.2.44.dmg">Download Ardia 0.2.44 for Mac</a>
 </h3>
