@@ -72,6 +72,8 @@ export const SIDEBAR_SHADOW = {
   tabSwitcher: { ...shadow.dialog, radius: 28, offset: [0, 12] },
 } satisfies Record<string, ShadowLevel>;
 
+export const FADED_TAB_OPACITY = 0.45;
+
 export const SELECTED_ROW_SHADOW_OFFSET: [number, number] = [0, 0.5];
 
 export const TILE_GLOW = { opacity: { dark: 0.15, light: 0.12 }, radius: 1.5, offset: [0, 0.5] as [number, number] };
