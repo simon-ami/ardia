@@ -9,6 +9,8 @@ import { pressTabClose, useTabCloseControl } from "../../state/sidebar/closeCont
 import { currentMovingTabIds } from "../../state/tabs/topStrip";
 import { TabBadges } from "../media/TabBadges";
 import { TabIcon } from "../sidebar/TabIcon";
+import { FADED_TAB_OPACITY } from "../sidebar/tokens";
+import { useFadeTabTitle } from "../../state/sidebar/rowState";
 import { Button, FadeLabel, Symbol, useHover } from "../ui";
 import { HoverSlot } from "../ui/HoverSlot";
 import { useTheme } from "../ui/theme";
@@ -109,6 +111,7 @@ export function TabChip({ tabId, width, tuck, dragged }: { tabId: string; width:
   const theme = useTheme();
   const windowId = useWindowId();
   const tab = useTab(tabId);
+  const fadeTitle = useFadeTabTitle(tabId);
   const onto = useOnto({ kind: "tab", id: tabId });
   const active = useIsActiveTab(tabId);
   const floating = useContext(FloatingStrip);
@@ -143,7 +146,7 @@ export function TabChip({ tabId, width, tuck, dragged }: { tabId: string; width:
               text={title}
               fontSize={font.small.fontSize}
               color={onBand ? palette.text : active ? theme.tabSelectedText : theme.textTab}
-              style={{ flex: 1, height: 16, marginLeft: CHIP_LABEL_GAP }}
+              style={{ flex: 1, height: 16, marginLeft: CHIP_LABEL_GAP, opacity: fadeTitle ? FADED_TAB_OPACITY : 1 }}
             />
             <HoverSlot
               hovered={hovered}
