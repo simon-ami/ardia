@@ -3,6 +3,8 @@ import { Animated, View } from "react-native";
 import { useIsActiveTab, usePageProfileId, useTab, useWindowId } from "../../state/browser/hooks";
 import { useShownTabIdFor } from "../../state/tabs/topStrip";
 import { TabIcon } from "../sidebar/TabIcon";
+import { FADED_TAB_OPACITY } from "../sidebar/tokens";
+import { useFadeTabTitle } from "../../state/sidebar/rowState";
 import { Divider, FadeLabel, Symbol, useHover } from "../ui";
 import { useTheme } from "../ui/theme";
 import type { ToolbarPalette } from "../ui/toolbarColors";
@@ -49,6 +51,7 @@ function SplitPart({ tabId, first, last, ink }: { tabId: string; first: boolean;
   const theme = useTheme();
   const windowId = useWindowId();
   const tab = useTab(tabId);
+  const fadeTitle = useFadeTabTitle(tabId);
   const focused = useIsActiveTab(tabId);
   const drag = useStripDrag({ tabId, ids: () => [tabId], pinned: false, groupId: null, geometry: NO_SLOTS, from: -1, width: 0, gap: 0, axis: "y" });
   if (!tab) return null;
@@ -67,9 +70,9 @@ function SplitPart({ tabId, first, last, ink }: { tabId: string; first: boolean;
           <Divider vertical length={SPLIT_DIVIDER_LENGTH} color={ink?.divider ?? theme.textTertiary} style={SPLIT_DIVIDER_GAP} />
         )}
         <View pointerEvents="none">
-          <TabIcon url={tab.url} favicon={tab.favicon} icon={tab.customIcon} compact profileId={tab.profileId} />
+          <TabIcon tabId={tab.id} url={tab.url} favicon={tab.favicon} icon={tab.customIcon} compact profileId={tab.profileId} />
         </View>
-        <FadeLabel text={tabTitle(tab)} fontSize={font.small.fontSize} color={ink ? (focused ? ink.text : ink.secondary) : focused ? theme.tabSelectedText : theme.textTab} style={{ flex: 1, height: 16, marginLeft: CHIP_LABEL_GAP }} />
+        <FadeLabel text={tabTitle(tab)} fontSize={font.small.fontSize} color={ink ? (focused ? ink.text : ink.secondary) : focused ? theme.tabSelectedText : theme.textTab} style={{ flex: 1, height: 16, marginLeft: CHIP_LABEL_GAP, opacity: fadeTitle ? FADED_TAB_OPACITY : 1 }} />
       </TabPressArea>
     </Animated.View>
   );
