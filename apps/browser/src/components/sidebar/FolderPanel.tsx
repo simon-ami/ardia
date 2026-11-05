@@ -8,6 +8,7 @@ import { SLIDE } from "../tabstrip/tokens";
 import { ContextMenuArea, HoverCard as HoverPanel, OutsidePressArea, space, useHover } from "../ui";
 import { SectionLabel } from "./SectionLabel";
 import { SidebarListRow, SidebarRowLabel } from "./SidebarRow";
+import { useFadeTabTitle } from "../../state/sidebar/rowState";
 import { TAB_ROW } from "./tokens";
 import { clickTab } from "../../state/sidebar/actions";
 import { useDragController, useDragItem, useFolderAway } from "./DragProvider";
@@ -92,6 +93,7 @@ function PanelBody({ windowId, folderId, anchor }: { windowId: string; folderId:
 function MemberRow({ tabId, windowId }: { tabId: string; windowId: string }) {
   const theme = useTheme();
   const tab = useTab(tabId);
+  const fadeTitle = useFadeTabTitle(tabId);
   const active = useIsActiveTab(tabId);
   const { hovered, hoverProps } = useHover();
   const { wrapper, handle } = useDragItem(`fm:${tabId}`, { kind: "row", tabIds: [tabId], section: "folder" });
@@ -109,7 +111,7 @@ function MemberRow({ tabId, windowId }: { tabId: string; windowId: string }) {
             {({ pressed }) => (
               <SidebarListRow height={layout.rowHeight} padRight={TAB_ROW.contentLeft} fill={pressed ? theme.tabPressed : active ? theme.pinnedSelectedFill : hovered ? theme.tabHover : undefined}>
                 <TabIcon tabId={tabId} url={tab.url} favicon={tab.favicon} icon={tab.customIcon} />
-                <SidebarRowLabel text={tabTitle(tab)} color={active ? theme.textPrimary : theme.textTab} />
+                <SidebarRowLabel text={tabTitle(tab)} color={active ? theme.textPrimary : theme.textTab} faded={fadeTitle} />
               </SidebarListRow>
             )}
           </Pressable>
