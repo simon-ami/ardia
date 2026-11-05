@@ -98,6 +98,7 @@ export function TabsPane() {
         <SettingToggle anchor="tabs.showClearButton" />
         <SettingToggle anchor="tabs.balancedTopApps" />
         <SettingToggle anchor="tabs.fadeUnloadedTabs" />
+        <SettingToggle anchor="tabs.fadeUnloadedTabTitles" />
         </Group>
       </Box>
 
