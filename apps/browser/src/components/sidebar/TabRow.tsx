@@ -15,11 +15,11 @@ import { useDragItem, useDropOnto } from "./DragProvider";
 import { useShift, type EntryMotion } from "./EntryMotion";
 import { useRowHover } from "./hoverController";
 import { pressTabClose, useTabCloseControlWhile } from "../../state/sidebar/closeControl";
-import { ACTIVE, ICON_MARKS, LOADING, mutedBy, PLAYING, SELECTED, useRowState } from "../../state/sidebar/rowState";
+import { ACTIVE, ICON_MARKS, LOADING, mutedBy, PLAYING, SELECTED, useFadeTabTitle, useRowState } from "../../state/sidebar/rowState";
 import { registerRow, useSidebarUi } from "../../state/sidebar/sidebarUi";
 import { TabIcon } from "./TabIcon";
 import { TabBadges } from "../media/TabBadges";
-import { TAB_ROW, useSidebarTokens } from "./tokens";
+import { FADED_TAB_OPACITY, TAB_ROW, useSidebarTokens } from "./tokens";
 import { useSidebarRowLook } from "./rowLook";
 import { ROW_TITLE_FRAME, SidebarRowLabel, SidebarRowSurface } from "./SidebarRow";
 import { withShortcut } from "../../state/commands/commandShortcuts";
@@ -65,6 +65,7 @@ export const TabRow = memo(function TabRow({
   const tokens = useSidebarTokens();
   const windowId = useWindowId();
   const { tab, flags } = useRowState(tabId, windowId);
+  const fadeTitle = useFadeTabTitle(tabId);
   const active = !!(flags & ACTIVE);
   const selected = !!(flags & SELECTED);
   const playingAudio = !!(flags & PLAYING);
@@ -136,7 +137,7 @@ export const TabRow = memo(function TabRow({
                 onDone={(text) => (text === null ? endRename({ kind: "tab", id: tabId }) : commitRename({ kind: "tab", id: tabId }, text))}
               />
             ) : (
-              <SidebarRowLabel text={title} color={active ? theme.tabSelectedText : theme.textTab} />
+              <SidebarRowLabel text={title} color={active ? theme.tabSelectedText : theme.textTab} faded={fadeTitle && !resetting} />
             )}
             <HoverSlot
               hovered={hovered && !renaming}
@@ -253,6 +254,7 @@ const SPLIT_SLOT = { flex: 1, flexDirection: "row", alignItems: "center", minWid
 function SplitPane({ tabId, windowId }: { tabId: string; windowId: string }) {
   const theme = useTheme();
   const tab = useTab(tabId);
+  const fadeTitle = useFadeTabTitle(tabId);
   const active = useIsActiveTab(tabId);
   const { hovered, hoverProps } = useRowHover(windowId, { kind: "tab", id: tabId });
   if (!tab) return null;
@@ -271,7 +273,7 @@ function SplitPane({ tabId, windowId }: { tabId: string; windowId: string }) {
             }}
           >
             <TabIcon tabId={tab.id} url={tab.url} favicon={tab.favicon} icon={tab.customIcon} compact />
-            <FadeLabel text={tabTitle(tab)} fontSize={font.small.fontSize} color={active ? theme.tabSelectedText : theme.textTab} style={{ flex: 1, height: 16, marginLeft: space.xs }} />
+            <FadeLabel text={tabTitle(tab)} fontSize={font.small.fontSize} color={active ? theme.tabSelectedText : theme.textTab} style={{ flex: 1, height: 16, marginLeft: space.xs, opacity: fadeTitle ? FADED_TAB_OPACITY : 1 }} />
           </View>
         )}
       </TabPressArea>
