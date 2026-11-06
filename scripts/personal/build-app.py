@@ -62,7 +62,7 @@ def main():
                 info_path = candidate / "Contents/Info.plist"
                 with info_path.open("rb") as stream:
                     info = plistlib.load(stream)
-                info.update(CFBundleIdentifier="dev.simon.ardia.personal", CFBundleDisplayName="Ardia Personal", CFBundleName="Ardia Personal", SUEnableAutomaticChecks=False, SUAutomaticallyUpdate=False)
+                info.update(CFBundleIdentifier="dev.simon.ardia.personal", CFBundleDisplayName="Ardia Personal", CFBundleName="Ardia Personal", ACPersonalBuild=True, SUEnableAutomaticChecks=False, SUAutomaticallyUpdate=False)
                 for key in ["SUFeedURL", "SUPublicEDKey", "CFBundleURLTypes", "CFBundleDocumentTypes"]:
                     info.pop(key, None)
                 with info_path.open("wb") as stream:
@@ -80,7 +80,7 @@ def main():
         finally:
             run(["security", "lock-keychain", keychain], timeout=10)
     print(f"app: {app}")
-    print("Isolated tests only: real Keychain storage and personal CLI routing are not configured yet.")
+    print("Test data only: real Keychain storage is not configured yet. Use ardia-personal for this build.")
 
 
 if __name__ == "__main__":

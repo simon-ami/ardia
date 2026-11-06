@@ -8,6 +8,7 @@ NS_SWIFT_NAME(LaunchConfig)
 @property(class, readonly) ArdiaLaunchConfig *shared;
 
 - (instancetype)initWithEnvironment:(NSDictionary<NSString *, NSString *> *)environment
+                             bundle:(NSBundle *)bundle
               signedForDistribution:(BOOL (^)(void))signedForDistribution NS_DESIGNATED_INITIALIZER;
 - (instancetype)init NS_UNAVAILABLE;
 

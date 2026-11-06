@@ -1,0 +1,27 @@
+#!/bin/sh
+set -eu
+self=$0
+while [ -L "$self" ]; do
+  link=$(readlink "$self")
+  case $link in
+    /*) self=$link ;;
+    *) self=$(dirname "$self")/$link ;;
+  esac
+done
+repo=$(cd -P "$(dirname "$self")/../.." && pwd -P)
+for argument in "$@"; do
+  case $argument in
+    --data-dir|--data-dir=*|--port|--port=*|--ws|--ws=*|--cdp|--cdp=*)
+      echo 'ardia-personal uses only the personal profile; endpoint overrides are refused.' >&2
+      exit 64 ;;
+  esac
+done
+unset ARDIA_CDP_URL AGENT_BROWSER_CDP ARDIA_BROWSE_KEYCHAIN
+export ARDIA_DATA_DIR="$HOME/Library/Application Support/dev.simon.ardia.personal"
+export ARDIA_BROWSE_KEYCHAIN_SERVICE=dev.simon.ardia.personal.browse.auth
+runtime="$repo/apps/browser/build-personal-cli/current/bin/ardia"
+if [ ! -x "$runtime" ]; then
+  echo 'The personal CLI runtime is missing. Run scripts/personal/prepare-cli.py first.' >&2
+  exit 1
+fi
+exec "$runtime" "$@"
