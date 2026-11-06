@@ -10,7 +10,10 @@
   - Control-Shift-Tab cycles backward. Releasing Control selects the focused card; Escape cancels.
   - Show the current window and profile's tabs in MRU order. Prefer tabs opened or visited since launch;
     use the existing recent-tab selection when fewer than two qualify.
-  - Fit the row to the window and keep the selected card in view.
+  - Scale picture width to `ceil(screen width × 0.85 / 7)`, following installed Zen 1.24.1b's
+    `browser-ctrlTab.js` sizing rule. Picture height follows the screen aspect ratio. Clamp to window width
+    and height when necessary. Fit the row to the window and keep the selected card in view.
+  - Subscribe to React Native screen-dimension updates; use logical dimensions rather than Retina pixels.
   - Update visible cards when screenshots arrive. Retain custom icons and their contrast in light mode.
   - Keep previews only in the existing 40-entry memory cache. Do not capture private tabs.
 - Port adaptations: current component/state/platform boundaries, shared UI components and tokens,
@@ -47,3 +50,27 @@
 - Combined with [optional sleeping-tab exclusion](skip-sleeping-tabs-in-switcher.md); both session selection and fallback respect its setting.
 - [MRU eligibility follow-up](lazy-startup-and-mru.md) excludes empty command-bar tabs and corrects the first step when the current tab is excluded.
 - Upstream replacement evidence and removal approval: none.
+
+- Relative preview sizing follow-up: replaces the fixed 160 × 105 pt picture. On a 1728 × 1117 pt display,
+  the expected picture is 210 × 136 pt. Text, padding, and selection styling retain their existing sizes.
+  Typecheck and all 12 conventions checks passed. Signed Release built.
+  Hidden app: pictures measured 210 × 136 pt; 1360 pt window showed five cards, 520 pt window one card.
+  Repeated cycling kept the selected card in view. Scratch instance stopped. Installed at `~/Applications/Ardia Personal.app`.
+  Backup: `~/Library/Application Support/Ardia Personal/Updates/20261106-213135-376f5746`.
+  Simon approved the final size and appearance on 2026-11-06.
+
+- Zen styling follow-up: installed Zen 1.24.1b `ctrlTab.css`, `browser-ctrlTab.js`, toolkit `xul.css`,
+  and `global-shared.css` are the reference. XUL uses border-box sizing; the root uses the macOS
+  message-box font and the switcher does not apply bold on macOS. Titles use 13 pt regular system text,
+  centered below the picture with an 8 pt gap. Cards reserve 8 pt padding and a constant 2 pt selection border.
+  Columns follow Zen's 1.25 × picture-width spacing, constrained to the app window.
+  Favicon badge: 42 pt outer size, 5 pt padding, 1 pt border, a 30 pt icon; overlaps the picture's bottom
+  and right edges by 6 pt. Preview image dimensions do not change when selection moves.
+  Typecheck and conventions passed; signed Release built. Hidden app measured the 42 pt badge extending
+  exactly 6 pt beyond both image edges; title frame matches picture width, with centered 13 pt regular text
+  and an 8 pt gap. Dimensions remain stable after selection changes and in a 520 pt window.
+  Scratch instance stopped. Installed with backup
+  `~/Library/Application Support/Ardia Personal/Updates/20261106-223520-6f94451f`.
+  Simon approved the final appearance on 2026-11-06.
+
+- Favicon badge background follow-up: use the opaque panel color in both themes. The control role was translucent in dark mode. Typecheck and 12 conventions checks passed. Signed Release built; hidden app confirmed badge fills #2A2A2A in dark mode and #FFFFFF in light mode. Installed with backup `~/Library/Application Support/Ardia Personal/Updates/20261106-224607-38664894`. Simon approved the relative size, Zen styling, and opaque badges on 2026-11-06.

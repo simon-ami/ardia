@@ -105,12 +105,19 @@ export function groupSurface(color: GroupColor | null | undefined, tokens: Sideb
 export const SIDEBAR_MIN_WIDTH = 160;
 export const SIDEBAR_MAX_WIDTH = 400;
 
-export const SWITCHER = { card: 168, shot: 105, gap: 4, pad: 8, label: 30, panelRadius: 18, cardRadius: 12, shotRadius: 8, appearMs: 160 } as const;
+export const SWITCHER = {
+  screenFraction: 0.85, referenceColumns: 7, windowMargin: 40, columnScale: 1.25,
+  panelSide: 10, panelTop: 20, panelBottom: 10, cardTopOffset: -10,
+  cardPadding: 8, cardBorder: 2, labelGap: 8, labelHeight: 16,
+  badgeSize: 42, badgePadding: 5, badgeBorder: 1, badgeRadius: 4, badgeRight: -6, badgeBottom: 6,
+  panelRadius: 18, cardRadius: 6.5, shotRadius: 0, appearMs: 160,
+} as const;
 
 export const SWITCHER_COLORS = {
   darkPanel: "#1C1C1EF2",
   lightPanel: "#2A2A2CF2",
-  focus: "rgba(255,255,255,0.14)",
+  focus: "rgba(0,0,0,0.7)",
+  clear: "transparent",
   outline: "rgba(255,255,255,0.12)",
   page: "#FFFFFF",
   empty: "#3A3A3C",
