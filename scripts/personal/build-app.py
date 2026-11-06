@@ -9,6 +9,8 @@ import subprocess
 import sys
 import tempfile
 
+from lifecycle import app_inputs, artifact, cli_inputs, file_digest, read_json, reusable_release, run as command, verify_unsigned, write_json
+
 
 def run(args, **kwargs):
     return subprocess.run([str(arg) for arg in args], check=True, **kwargs)
@@ -46,11 +48,31 @@ def main():
         ensure_stopped(app)
         config = output / "Release.xcconfig"
         config.write_text(f'#include "{repo}/apps/browser/macos/AdHoc.xcconfig"\nARCHS = arm64\nONLY_ACTIVE_ARCH = YES\n')
-        if not args.sign_only:
-            run([repo / "scripts/agent/build-app", "--as", "personal", "--config", "Release", "--wait", "120"], cwd=repo, env={**os.environ, "XCODE_XCCONFIG_FILE": str(config)})
+        framework = os.environ.get("ARDIACORE_FRAMEWORK")
+        if not framework:
+            framework = command(repo / "packages/ardiacore/scripts/fetch-engine.sh", capture_output=True, text=True, timeout=180).stdout.strip()
+        engine = {"tree": command("git", "-C", repo, "rev-parse", "HEAD:engine", capture_output=True, text=True).stdout.strip(), "binary": file_digest(Path(framework) / "Versions/Current/Chromium Framework")}
+        inputs = app_inputs(repo)
         source = repo / "apps/browser/build-personal/Build/Products/Release/Ardia.app"
+        stamp = output / "unsigned-build.json"
+        if args.sign_only and not stamp.is_file():
+            raise RuntimeError("No recorded Release build; run without --sign-only once")
+        reusable = stamp.is_file() and reusable_release(repo, source, read_json(stamp), engine)
+        if not args.sign_only and not reusable:
+            run([repo / "scripts/agent/build-app", "--as", "personal", "--config", "Release", "--wait", "120"], cwd=repo, env={**os.environ, "XCODE_XCCONFIG_FILE": str(config), "ARDIACORE_FRAMEWORK": framework})
+            if app_inputs(repo) != inputs:
+                raise RuntimeError("App sources changed during the build; build again")
+            write_json(stamp, {"schema": 1, "inputs": inputs, "engine": engine, "artifact": artifact(source)})
+        elif reusable:
+            print("Release inputs and program files are unchanged; reusing the existing build.")
+        verify_unsigned(repo, source, read_json(stamp), engine)
+        run(["codesign", "--verify", "--deep", "--strict", source], timeout=30)
         if not (source / "Contents/Resources/main.jsbundle").is_file():
             raise RuntimeError("No standalone Release bundle; run without --sign-only")
+        run([sys.executable, repo / "scripts/personal/prepare-cli.py", "--prepare-only"])
+        cli = read_json(repo / "apps/browser/build-personal-cli/prepared.json")
+        if cli["source"] != cli_inputs(repo):
+            raise RuntimeError("CLI sources changed after preparation; prepare the build again")
         helper = output / "unlock-signing-keychain"
         run(["swiftc", "-suppress-warnings", repo / "scripts/personal/unlock-signing-keychain.swift", "-framework", "Security", "-o", helper])
         unlock = [helper, keychain]
@@ -70,6 +92,9 @@ def main():
                     info.pop(key, None)
                 with info_path.open("wb") as stream:
                     plistlib.dump(info, stream)
+                record = {"schema": 1, "inputs": inputs, "engine": engine, "cli": cli, "commit": command("git", "-C", repo, "rev-parse", "HEAD", capture_output=True, text=True).stdout.strip(), "dirty": bool(command("git", "-C", repo, "status", "--porcelain", capture_output=True, text=True).stdout), "certificate": identity}
+                write_json(candidate / "Contents/Resources/personal-build.json", record)
+                verify_unsigned(repo, source, read_json(stamp), engine)
                 run(["codesign", "--force", "--sign", identity, "--keychain", keychain, "--timestamp=none", candidate], timeout=30)
                 run(["codesign", "--verify", "--deep", "--strict", candidate], timeout=30)
                 ensure_stopped(app)

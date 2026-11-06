@@ -17,19 +17,50 @@ folder did not exist. Its profile and selected window and appearance preferences
 
 ## Build and sign
 
-Run `python3 scripts/personal/build-app.py`. It calls the existing locked build wrapper, then copies the app
-and signs the copy. `--sign-only` reuses an existing Release build. The output is
+Run `python3 scripts/personal/build-app.py`. It uses the matching prebuilt engine, calls the existing locked
+build wrapper when app inputs changed, prepares the paired CLI, and signs the app copy.
+`--sign-only` requires a recorded Release whose sources, engine, executable, JavaScript, and bundle metadata
+still match. Older unrecorded builds need one normal build. The output is
 `apps/browser/build-personal-signed/Ardia Personal.app`.
 
 For an approved daily-use update, add `--install`. It verifies the signed app, copies it to
 `~/Applications/Ardia Personal.app`, and registers HTTP and HTTPS support. It does not select a default browser.
+Prefer building and testing first, then running the installer without rebuilding.
 Quit the personal app first. The installer refuses to replace a running app or an unrelated bundle.
 It keeps the previous installed app at
 `~/Library/Application Support/Ardia Personal/Installed Builds/Ardia Personal.previous.app`.
 It removes this checkout's build copies from the browser-handler registry and registers the installed app.
 `python3 scripts/personal/install-app.py` installs an already signed build without rebuilding or unlocking the key.
-No profile data is copied during app installation. Build and installed copies use the same personal profile;
-they must not run at the same time.
+Build and installed copies use the same personal profile; they must not run at the same time.
+
+## Build records and update backups
+
+`python3 scripts/personal/status.py` reports whether installed and candidate source records match this checkout.
+It does not validate signatures or claim that tests passed. The signed `Contents/Resources/personal-build.json`
+records app input hashes, Git commit and dirty state, engine source tree and binary hash, certificate fingerprint,
+and the paired CLI runtime. Committing unchanged inputs or editing documentation does not require a rebuild.
+The unsigned-build record also checks the executable, bundled JavaScript, Info.plist, and embedded engine bytes.
+Missing records or mismatches do not silently pass `--sign-only` or installation.
+
+Before replacement, the installer creates a private snapshot in
+`~/Library/Application Support/Ardia Personal/Updates/<timestamp-id>` containing:
+
+- `profile`: the personal profile, including installed scripts and editable configuration, when present.
+- `preferences.plist`: exported personal macOS preferences.
+- `app`: the previously installed app, when present.
+- `update.json`: the candidate build and previous CLI reference; state is `prepared`, `installed`, or `failed`.
+
+The APFS copy is independent. The installer compares file layouts and sizes, checks that source timestamps
+stay unchanged, and rechecks the profile before replacement. It does not hash every profile file on every update.
+A socket or special file, a changed profile, or a failed copy stops installation. `INCOMPLETE` marks a failed
+profile snapshot; do not restore from it. The original migration backup remains separate and unchanged.
+
+App and CLI activation is coordinated. If replacement or registration fails, the installer restores the previous
+app and CLI reference. It does not restore profile data automatically after a later app failure. On request,
+preserve the failed current state and restore the matching app, profile, preferences, and CLI reference from
+one complete snapshot. A profile-format upgrade may make an app-only downgrade unsafe.
+Keep snapshots private and out of Git; do not delete them automatically. They do not back up the shared
+Safe Storage key or the signing identity.
 
 The dedicated signing keychain is `~/Library/Application Support/Ardia Personal/Signing/signing.keychain-db`.
 If locked, obtain its password through the private secret tool and pass the returned file with `--password-file`.
@@ -82,10 +113,13 @@ Do not copy the official profile for this test. Simon confirmed this test passed
 
 ## Personal CLI
 
-Run `python3 scripts/personal/prepare-cli.py --install` after CLI source changes. It builds a separate runtime
-from this checkout in `apps/browser/build-personal-cli`, verifies its archive, and switches its `current` symlink.
-Unchanged sources reuse the archive. Old runtimes stay available for running commands.
-The installer adds only `~/.local/bin/ardia-personal`; it does not change `ardia` or the shell configuration.
+The app build runs `prepare-cli.py --prepare-only`. It builds a separate runtime
+from this checkout in `apps/browser/build-personal-cli` and verifies its archive.
+Preparation does not switch `current`; the app installer activates the CLI recorded in the signed candidate.
+Unchanged sources and version reuse the archive. Version metadata comes from the app project rather than a
+fixed version in the script. Runtime content is checked before activation. Old runtimes remain available.
+For a deliberately separate CLI update, `prepare-cli.py` activates its prepared runtime; `--install` also adds
+`~/.local/bin/ardia-personal`. It does not change `ardia` or the shell configuration.
 Keep this checkout at its current location while using that symlink.
 Simon's global `~/.codex/AGENTS.md` directs browser automation to use `ardia-personal` wherever the Ardia skill
 says `ardia`. The skill text stays unchanged. Use the official command only on an explicit request.
@@ -132,7 +166,12 @@ official profile as part of rollback.
 - Personal bundle ID, disabled updater, HTTP/HTTPS registration, and absent file/document registrations.
 - Installed app starts hidden with scratch data. Installation refuses a running app and an unrelated bundle.
   Reinstallation preserves the previous app. Launch Services lists the installed app for HTTPS; the default
-  HTTP/HTTPS browser remains the official installation.
+  HTTP/HTTPS browser choice remained unchanged during installation.
+- Lifecycle tests verify independent profile snapshots, stale-source and modified-build rejection, coordinated
+  app/CLI rollback, failure before replacement when backup fails, and profile-change detection before activation.
+  External signing and registry operations are simulated in these tests. A real Release candidate also passed
+  signature verification and a hidden scratch launch. Repeated preparation reused the app and CLI archive;
+  the installed app, active CLI, and real profile were left unchanged during this lifecycle verification.
 - Locked-keychain and wrong-password failures without interactive prompts.
 - Refusal to replace a running personal app.
 - Scratch instance loads one window; updater is unconfigured and installed CLI version is absent.
