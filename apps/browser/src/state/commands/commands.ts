@@ -1,3 +1,5 @@
+import { discardTabs } from "../tabs/discardActions";
+import { selectedTabIds } from "../pins/organize";
 import { closeWindow as closeNativeWindow } from "../../platform/windows";
 import { copyText } from "../../platform/clipboard";
 import { openExternalURL } from "../../platform/app";
@@ -160,6 +162,10 @@ export function runCommand({ command, arg, windowId: requested }: CommandEvent, 
       if (tab && addressBarInSidebar(s, windowId) && !commandBarCentred(s, windowId)) return s.openPanel(windowId, "");
       if (!focusHeroBar(windowId, tabId)) return tab ? s.openPanel(windowId, "") : undefined;
       return ui?.panel.open ? s.closePanel(windowId) : undefined;
+    case "unloadTabs": {
+      const selected = selectedTabIds(s, windowId);
+      return void discardTabs(targeted ? [targeted] : selected.length ? selected : tabId ? [tabId] : []);
+    }
     case "closeTab":
       if (targeted) return void closeTab(targeted);
       if (ui?.panel.newTab) {

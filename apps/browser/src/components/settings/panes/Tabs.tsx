@@ -97,10 +97,15 @@ export function TabsPane() {
         <SettingToggle anchor="tabs.showSidebarButton" />
         <SettingToggle anchor="tabs.showClearButton" />
         <SettingToggle anchor="tabs.balancedTopApps" />
-        <SettingToggle anchor="tabs.fadeUnloadedTabs" />
-        <SettingToggle anchor="tabs.fadeUnloadedTabTitles" />
         </Group>
       </Box>
+
+      <SectionHeader title="Unloaded tab appearance" description="Choose how sleeping and unloaded tabs appear." />
+      <Group>
+        <SettingToggle anchor="tabs.fadeUnloadedTabTitles" description={null} />
+        <SettingToggle anchor="tabs.fadeUnloadedTabs" description={null} />
+        <SettingToggle anchor="tabs.grayscaleUnloadedFavicons" description={null} />
+      </Group>
 
       <SectionHeader title="General" />
       <Group>
@@ -122,6 +127,7 @@ export function TabsPane() {
           <PopUp value={newTabButtonPosition} options={NEW_TAB_BUTTON} onChange={(v) => updateSettings({ newTabButtonPosition: v })} minWidth={190} />
         </Row>
         <SettingToggle anchor="tabs.shareTabsAcrossWindows" />
+        <SettingToggle anchor="tabs.sleepingTabsInSwitcher" />
         <SettingToggle anchor="tabs.warnBeforeClosingLastTab" />
         <SettingToggle anchor="tabs.tabReorderHaptics" />
         <SettingToggle anchor="tabs.extendWebsiteColor" />

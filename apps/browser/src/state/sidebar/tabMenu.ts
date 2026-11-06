@@ -1,3 +1,4 @@
+import { discardTabs } from "../tabs/discardActions";
 import type { MenuItem } from "../../platform/menus";
 import { chooseFromMenu, type ChoiceItem } from "../app/menuChoice";
 import { closeTab, moveTabsToProfile, moveTabToWindow, openWindow, toggleMute, toggleSiteMute } from "../browser/actions";
@@ -119,8 +120,8 @@ function muteItems(s: BrowserState, tab: Tab): MenuItem[] {
   if (!tab.url) return [];
   const state = muteState(s, tab);
   const mute: MenuItem = { id: "mute", title: muteTitle(state), symbol: muteSymbol(state) };
-  if (state === "site") return [mute];
-  return withAlternate(mute, { id: "muteSite", title: siteMuteTitle(state), symbol: muteSymbol(null) }, null);
+  if (state === "site") return [mute, { id: "unload", title: "Unload Tab", symbol: "moon" }];
+  return [...withAlternate(mute, { id: "muteSite", title: siteMuteTitle(state), symbol: muteSymbol(null) }, null), { id: "unload", title: "Unload Tab", symbol: "moon" }];
 }
 
 function closeItems(f: Facts): MenuItem[] {
@@ -219,6 +220,7 @@ function runTabChoice(windowId: string, tab: Tab, f: Facts, choice: string | Des
   else if (choice === "copy") copyUrls([tab.id], false);
   else if (choice === "copyMd") copyUrls([tab.id], true);
   else if (choice === "bookmark") bookmarkTab(windowId, tab.id);
+  else if (choice === "unload") void discardTabs([tab.id]);
   else if (choice === "close") void closeTab(tab.id);
   else if (choice === "closeOthers") s.closeTabs(f.others);
   else if (choice === "closeAbove") s.closeTabs(f.above);

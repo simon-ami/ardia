@@ -1,3 +1,4 @@
+import { useSyncExternalStore } from "react";
 import { useBrowser } from "../browser/store";
 import { isIncognitoProfile } from "../browser/model";
 import { webviews } from "../../platform/webviews";
@@ -10,22 +11,46 @@ const pictures = new Map<string, Picture>();
 const timers = new Map<string, ReturnType<typeof setTimeout>>();
 let started = false;
 
+const listeners = new Set<() => void>();
+
 export function lastPicture(tabId: string): Picture | null {
   return pictures.get(tabId) ?? null;
 }
 
-function remember(tabId: string) {
-  void webviews
-    .get(tabId)
-    ?.capturePicture(0.25)
+function onPicturesChanged(listener: () => void): () => void {
+  listeners.add(listener);
+  return () => void listeners.delete(listener);
+}
+
+function changed() {
+  for (const listener of listeners) listener();
+}
+
+export function useTabPicture(tabId: string): Picture | null {
+  return useSyncExternalStore(onPicturesChanged, () => lastPicture(tabId));
+}
+
+export function rememberPicture(tabId: string): Promise<void> {
+  return remember(tabId);
+}
+
+function remember(tabId: string): Promise<void> {
+  const tab = useBrowser.getState().tabs[tabId];
+  if (!tab || isIncognitoProfile(tab.profileId) || useBrowser.getState().windows[tab.windowId]?.kind === "private") return Promise.resolve();
+  const view = webviews.get(tabId);
+  if (!view) return Promise.resolve();
+  return view
+    .capturePicture(0.25)
     .then((picture) => {
-      if (!picture || !useBrowser.getState().tabs[tabId]) return;
+      const current = useBrowser.getState().tabs[tabId];
+      if (!picture || !current || current.url !== tab.url || current.profileId !== tab.profileId || webviews.get(tabId) !== view) return;
       pictures.delete(tabId);
       pictures.set(tabId, picture);
       for (const old of pictures.keys()) {
         if (pictures.size <= KEEP) break;
         pictures.delete(old);
       }
+      changed();
     })
     .catch(() => {});
 }
@@ -56,6 +81,10 @@ export function startTabPictures() {
         }, SETTLE_MS),
       );
     }
-    if (s.tabs !== prev.tabs) for (const id of pictures.keys()) if (!s.tabs[id]) pictures.delete(id);
+    if (s.tabs !== prev.tabs) {
+      const before = pictures.size;
+      for (const id of pictures.keys()) if (!s.tabs[id]) pictures.delete(id);
+      if (pictures.size !== before) changed();
+    }
   });
 }

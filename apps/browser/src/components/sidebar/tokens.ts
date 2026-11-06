@@ -70,6 +70,7 @@ export const SIDEBAR_SHADOW = {
   card: shadow.card,
   searchTabs: shadow.dialog,
   tabSwitcher: { ...shadow.dialog, radius: 28, offset: [0, 12] },
+  previewSwitcher: { color: ink.black, opacity: { dark: 0.45, light: 0.45 }, radius: 32, offset: [0, 14] },
 } satisfies Record<string, ShadowLevel>;
 
 export const FADED_TAB_OPACITY = 0.45;
@@ -103,3 +104,23 @@ export function groupSurface(color: GroupColor | null | undefined, tokens: Sideb
 
 export const SIDEBAR_MIN_WIDTH = 160;
 export const SIDEBAR_MAX_WIDTH = 400;
+
+export const SWITCHER = {
+  screenFraction: 0.85, referenceColumns: 7, windowMargin: 40, columnScale: 1.25,
+  panelSide: 10, panelTop: 20, panelBottom: 10, cardTopOffset: -10,
+  cardPadding: 8, cardBorder: 2, labelGap: 8, labelHeight: 16,
+  badgeSize: 42, badgePadding: 5, badgeBorder: 1, badgeRadius: 4, badgeRight: -6, badgeBottom: 6,
+  panelRadius: 18, cardRadius: 6.5, shotRadius: 0, appearMs: 160,
+} as const;
+
+export const SWITCHER_COLORS = {
+  darkPanel: "#1C1C1EF2",
+  lightPanel: "#2A2A2CF2",
+  focus: "rgba(0,0,0,0.7)",
+  clear: "transparent",
+  outline: "rgba(255,255,255,0.12)",
+  page: "#FFFFFF",
+  empty: "#3A3A3C",
+  onPanel: "#FFFFFFB3",
+  onPage: "#000000A6",
+} as const;

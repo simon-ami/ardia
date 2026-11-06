@@ -2,7 +2,7 @@ import { displayHost, hostOf } from "@ardia/core";
 import { memo, useState } from "react";
 import { Image, Text, View } from "react-native";
 import { faviconFailed, useAppearanceDark, useFavicon, useFaviconTheme } from "../../state/favicons/favicons";
-import { radius, Symbol, useTheme, weight } from "../ui";
+import { radius, Surface, Symbol, useTheme, weight } from "../ui";
 import { bundledSiteIcon } from "./siteIcons";
 
 export const Favicon = memo(function Favicon({
@@ -11,12 +11,14 @@ export const Favicon = memo(function Favicon({
   size = 16,
   profileId,
   direct,
+  grayscale = false,
 }: {
   url: string;
   favicon?: string | null;
   size?: number;
   profileId?: string;
   direct?: boolean;
+  grayscale?: boolean;
 }) {
   const theme = useTheme();
   useAppearanceDark();
@@ -26,8 +28,8 @@ export const Favicon = memo(function Favicon({
   const white = shape?.kind === "template" && !!shape.stroke;
   const [broken, setBroken] = useState<string | null>(null);
   if (!url && !resolved) return <NewTabIcon size={size} />;
-  if (!resolved || broken === resolved.uri) return <FaviconFallback url={url} size={size} />;
-  return (
+  if (!resolved || broken === resolved.uri) return <FaviconFallback url={url} size={size} grayscale={grayscale} />;
+  const image = (
     <Image
       key={white ? `${resolved.uri} tinted` : resolved.uri}
       source={{ uri: resolved.uri }}
@@ -38,12 +40,16 @@ export const Favicon = memo(function Favicon({
       style={{ width: size, height: size, borderRadius: size > 18 ? radius.control : radius.hair, tintColor: white ? theme.textPrimary : undefined }}
     />
   );
+  return grayscale ? <Surface grayscale style={{ width: size, height: size }}>{image}</Surface> : image;
 });
 
-export const FaviconFallback = memo(function FaviconFallback({ url, size = 16 }: { url: string; size?: number }) {
+export const FaviconFallback = memo(function FaviconFallback({ url, size = 16, grayscale = false }: { url: string; size?: number; grayscale?: boolean }) {
   const theme = useTheme();
   const bundled = bundledSiteIcon(url, theme.dark);
-  if (bundled !== undefined) return <Image source={bundled} style={{ width: size, height: size, borderRadius: size > 18 ? radius.control : radius.hair }} />;
+  if (bundled !== undefined) {
+    const image = <Image source={bundled} style={{ width: size, height: size, borderRadius: size > 18 ? radius.control : radius.hair }} />;
+    return grayscale ? <Surface grayscale style={{ width: size, height: size }}>{image}</Surface> : image;
+  }
   const initial = hostInitial(url);
   if (!initial) return <Symbol name="globe" size={size - 3} color={theme.textSecondary} style={{ width: size, height: size }} />;
   const tile = Math.round((size * 14) / 16);

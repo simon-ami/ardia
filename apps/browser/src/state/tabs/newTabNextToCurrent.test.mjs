@@ -30,7 +30,9 @@ test("the new tab opens right after the current one and is shown", () => {
   assert.equal(shown(w), n);
 });
 
-test("closing it goes back to the tab it was opened from", () => {
+test("closing it goes back to the tab it was opened from", (t) => {
+  let clock = Date.now();
+  t.mock.method(Date, "now", () => ++clock);
   reset();
   const [w, a, b] = setup("a", "b", "c");
   S().activate(a);

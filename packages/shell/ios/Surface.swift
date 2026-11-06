@@ -1,8 +1,12 @@
 import AppKit
+import CoreImage
 import Carbon.HIToolbox
 import ExpoModulesCore
 
 final class Surface: ExpoView {
+  var grayscale = false { didSet { apply() } }
+  private let grayscaleFilter = CIFilter(name: "CIColorControls", parameters: [kCIInputSaturationKey: 0])!
+
   var surfaceFill: NSColor? { didSet { apply() } }
   var surfaceRadius: Double = 0 { didSet { apply() } }
   var surfaceBorderColor: NSColor? { didSet { apply() } }
@@ -60,6 +64,7 @@ final class Surface: ExpoView {
       shadowMask.fillRule = .evenOdd
       shadowLayer.mask = shadowMask
     }
+    layer.filters = grayscale ? [grayscaleFilter] : nil
     layer.masksToBounds = false
     plate.frame = bounds
     plate.cornerRadius = surfaceRadius

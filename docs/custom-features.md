@@ -5,6 +5,12 @@ For an upstream update, review all active features.
 
 ## Records
 
+- [MRU successor across pinned and regular tabs](custom-features/cross-section-close-mru.md)
+- [Lazy startup and MRU page eligibility](custom-features/lazy-startup-and-mru.md)
+- [Native manual tab unloading and discard recovery](custom-features/manual-tab-unloading.md)
+- [Optional grayscale favicons for unloaded tabs](custom-features/grayscale-unloaded-favicons.md)
+- [Exclude sleeping tabs from the MRU switcher](custom-features/skip-sleeping-tabs-in-switcher.md)
+- [MRU tab switcher with page previews](custom-features/preview-tab-switcher.md)
 - [Title fading for unloaded and sleeping tabs](custom-features/fade-unloaded-tab-titles.md)
 - [Personal app isolation and local signing](custom-features/personal-app.md)
 

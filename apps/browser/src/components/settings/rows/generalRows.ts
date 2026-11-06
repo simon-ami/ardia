@@ -148,17 +148,28 @@ export const generalRows = {
           keywords: ["pinned tiles", "favorites", "grid", "columns", "rows", "arc"],
           shown: inSidebar,
         },
+      },
+    },
+    {
+      section: "Unloaded tab appearance",
+      rows: {
+        fadeUnloadedTabTitles: {
+          advanced: true,
+          title: "Fade titles",
+          description: "Fade titles of sleeping tabs, closed pinned tabs, and tabs waiting to load after a restart.",
+          keywords: ["asleep", "discarded", "dim", "grey", "gray", "inactive", "pinned", "closed"],
+        },
         fadeUnloadedTabs: {
           advanced: true,
-          title: "Fade icons of unloaded tabs",
+          title: "Fade icons",
           description: "A tab whose page isn't loaded, like a closed pinned tab or one restored after a relaunch, shows its icon faded, as sleeping tabs do. Clicking it loads the page.",
           keywords: ["unloaded", "asleep", "sleeping", "discarded", "dim", "grey", "gray", "inactive", "pinned", "closed"],
         },
-        fadeUnloadedTabTitles: {
+        grayscaleUnloadedFavicons: {
           advanced: true,
-          title: "Fade titles of unloaded tabs",
-          description: "Fade titles of sleeping tabs, closed pinned tabs, and tabs waiting to load after a restart.",
-          keywords: ["asleep", "discarded", "dim", "grey", "gray", "inactive", "pinned", "closed"],
+          title: "Grayscale favicons",
+          description: "Remove color from favicons of sleeping and unloaded tabs. Independent of title and icon fading.",
+          keywords: ["gray", "grey", "grayscale", "greyscale", "asleep", "sleeping", "unloaded", "icons", "color"],
         },
       },
     },
@@ -186,6 +197,11 @@ export const generalRows = {
           title: "Share tabs across windows",
           description: "Every window of a profile lists the same tabs, as in Arc. A tab is live in one window at a time: selecting it in another brings it there, and the first window shows it greyed until you click it. Each window keeps its own selected tab.",
           keywords: ["arc", "multiple windows", "same tabs", "sync windows", "shared sidebar", "unpinned"],
+        },
+        sleepingTabsInSwitcher: {
+          title: "Show sleeping tabs in the tab switcher",
+          description: "Off, ⌃Tab skips tabs whose page is asleep or not loaded, such as a closed pinned tab, so the tabs you use stay close. The tab you're on always shows.",
+          keywords: ["ctrl tab", "control tab", "last used tabs", "mru", "cycle", "asleep", "sleeping", "discarded", "unloaded", "memory saver"],
         },
         warnBeforeClosingLastTab: { advanced: true, title: "Warn before closing last tab in a Profile", keywords: ["confirm", "close tab"] },
         tabReorderHaptics: { advanced: true, title: "Haptic feedback when reordering tabs", keywords: ["trackpad", "vibration", "drag"] },

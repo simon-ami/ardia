@@ -1,9 +1,11 @@
 import { setSwitcherCapture, switcherPointerMoved } from "../../platform/focus";
 import { useBrowser } from "../browser/store";
-import { recentTabIds } from "../pins/tabCleanup";
+import { sessionTabIds } from "./sessionTabs";
+import { rememberPicture } from "../tabs/tabPictures";
 import { setSidebarUi, sidebarUi } from "./sidebarUi";
 
 const SHOW_AFTER_MS = 140;
+const SESSION_START = Date.now();
 const POINTER_POLL_MS = 50;
 let showTimer: ReturnType<typeof setTimeout> | undefined;
 let pointerTimer: ReturnType<typeof setInterval> | undefined;
@@ -14,9 +16,12 @@ let pointerStale = false;
 export function switcherStep(windowId: string, backward: boolean) {
   const current = sidebarUi().switcher;
   if (current && current.windowId === windowId) return moveSwitcher(backward ? -1 : 1);
-  const ids = recentTabIds(useBrowser.getState(), windowId);
+  const ids = sessionTabIds(useBrowser.getState(), windowId, SESSION_START);
   if (ids.length < 2) return;
-  setSidebarUi({ switcher: { windowId, ids, index: backward ? ids.length - 1 : 1, visible: false } });
+  const w = useBrowser.getState().windows[windowId];
+  const shown = w?.activeTabIds[w.profileId];
+  if (shown) void rememberPicture(shown);
+  setSidebarUi({ switcher: { windowId, ids, index: backward ? ids.length - 1 : ids[0] === shown ? 1 : 0, visible: false } });
   void setSwitcherCapture(true);
   clearTimeout(showTimer);
   showTimer = setTimeout(() => {

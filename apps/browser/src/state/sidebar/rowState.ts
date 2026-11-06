@@ -32,6 +32,11 @@ export const markedEngine = (marks: number): PageEngine | null =>
 export const useIconMarks = (tabId: string | undefined, given: number | undefined): number =>
   useBrowserWhile(given === undefined && !!tabId, (s) => given ?? (tabId ? iconMarks(s, tabId) : 0));
 
+export function useGrayscaleTabIcon(tabId: string): boolean {
+  const sleeping = useIsSleeping(tabId);
+  return useBrowser((s) => s.settings.grayscaleUnloadedFavicons && (sleeping || isPageUnloaded(s, tabId)));
+}
+
 export function useFadeTabTitle(tabId: string): boolean {
   const sleeping = useIsSleeping(tabId);
   return useBrowser((s) => s.settings.fadeUnloadedTabTitles && (sleeping || isPageUnloaded(s, tabId)));

@@ -35,6 +35,7 @@ export const COMMANDS = {
   restoreClosed: { littleArdia: "page" },
   focusCommandBar: { title: "Open Command Bar", keys: ["⌘L", "⌃F5"], ...inWindow },
   closeTab: { title: "Close Tab", symbol: "xmark", keys: ["⌘W"], ...inWindow },
+  unloadTabs: { title: "Unload Tab(s)", symbol: "moon", ...windowOffInLittleArdia },
   closeAllTabs: { title: "Close All Tabs", symbol: "xmark.square", keys: ["⇧⌘K"], ...windowOffInLittleArdia },
   print: { title: "Print…", symbol: "printer", keys: ["⌘P"], ...pageInLittleArdia },
   copyUrl: { title: "Copy URL", symbol: "link", keys: ["⇧⌘C"], ...pageInLittleArdia, onInternalPages: true },
