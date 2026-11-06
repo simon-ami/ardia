@@ -7,7 +7,7 @@ Follow the existing build locks and hidden-instance rules.
 
 Local commits are authorized for requested features and updates. If manual testing is needed, wait for
 Simon's confirmation before committing. Simon handles user-facing tests; run automated checks yourself.
-Use delegation when useful and available. No fixed provider or model is required.
+Work directly. Do not use subagents unless Simon explicitly requests them.
 Do not publish releases, deploy sites, or submit changes upstream without explicit approval.
 
 ## Update request
@@ -64,6 +64,7 @@ Write PR titles and descriptions, issues, commit messages, and review comments i
 Use active voice, short sentences, concrete words, and consistent terms. State one main point per sentence.
 Preserve technical detail and natural phrasing. Full controlled-vocabulary compliance is not required.
 Keep reports brief: result, checks, manual test needed, and decisions for Simon.
+For copies or migrations, state what stays shared and what becomes an independent copy. Name both locations.
 
 ## Local tools
 
@@ -81,7 +82,8 @@ Keep reports brief: result, checks, manual test needed, and decisions for Simon.
 Read `docs/agent-brief.md` for build and test commands. Use `scripts/agent/locked pod` for dependency installs.
 Here, `corepack pnpm install --frozen-lockfile` completed cleanly; the Homebrew pnpm executable stalled after installation.
 Use `XCODE_XCCONFIG_FILE="$PWD/apps/browser/macos/AdHoc.xcconfig"` with `scripts/agent/build-app --as personal`
-for local ad hoc builds. Debug needs Metro. A standalone Release build is not yet verified.
+for local ad hoc builds. Debug needs Metro. Release starts without Metro in a scratch profile.
+Read [the personal-app setup](personal-app.md) before signing a personal build or planning a migration.
 
 ## Fork maintenance
 
