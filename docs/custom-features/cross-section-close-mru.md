@@ -17,6 +17,8 @@
   Two timing-sensitive cases now use distinct fake timestamps instead of relying on wall-clock millisecond ties.
   Typecheck passed; full browser run had 1,659/1,661 passing, then the two timing-sensitive cases and nearby
   checks passed in the focused 42-case rerun. No suite failure remains unaddressed.
+- CI follow-up: one more activation-order test depended on wall-clock millisecond ties. A fixed clock
+  reproduced the failure; distinct timestamps resolved it. All 42 focused cases passed. App code is unchanged.
 - Manual check: visit a regular tab, then a pin, then another regular tab; close the current tab with Command-W.
   It should return to the pin. Reverse the sequence and repeat. Repeat with Top Apps and a sleeping candidate.
 - Hidden signed Release: regular close returned to the most recently used Top App; closing that Top App

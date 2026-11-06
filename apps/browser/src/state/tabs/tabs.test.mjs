@@ -35,7 +35,9 @@ test("links opened behind line up after their opener in order", () => {
   assert.equal(shown(w), "a", "opened behind: the opener stays in front");
 });
 
-test("closing a page opened in front returns to its opener unless you moved away", () => {
+test("closing a page opened in front returns to its opener unless you moved away", (t) => {
+  let clock = Date.now();
+  t.mock.method(Date, "now", () => ++clock);
   reset();
   const [w, a, b] = setup("a", "b");
   const c = open(w, "c", a, false);
@@ -46,7 +48,7 @@ test("closing a page opened in front returns to its opener unless you moved away
   S().activate(b);
   S().activate(d);
   S().closeTab(d);
-  assert.equal(shown(w), "b", "after moving away, the tab after it");
+  assert.equal(shown(w), "b", "after moving away, the most recently visited tab");
 });
 
 test("closing follows MRU over sibling preference while preserving opener links", (t) => {
