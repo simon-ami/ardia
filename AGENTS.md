@@ -125,3 +125,12 @@ For the architecture and the test tooling, read `docs/agent-brief.md`.
 `apps/browser` is the React Native macOS app. The native Expo modules are in `packages/{ardiacore,shell,shaders,import,sync}`; `engine/chromium` is our Chrome-services code (the `ac_*` C calls) and `engine/ardiacore` ArdiaCore's window and tab layer,
 and `packages/core` holds the omnibox logic and its tests. `apps/site` is ardia.dev and
 `apps/videos` holds the Remotion videos. The license is Apache-2.0.
+
+## Simon's personal fork
+
+For `simon-ami/ardia`, [the personal workflow](docs/personal-workflow.md) overrides conflicting upstream
+instructions above. Read it for updates, features, commits, and PRs. Track custom behavior in
+[the feature ledger](docs/custom-features.md).
+
+Run routine work yourself. Use task branches in this checkout. Ask before pushing, opening PRs,
+or removing custom feature code. The upstream release authorization does not apply to this fork.
