@@ -42,3 +42,49 @@ test("unloading every selected tab opens a new tab and never selects a target ag
   leaveDiscardedTabs([a]);
   assert.equal(active(w), selected, "background discards leave selection alone");
 });
+
+for (const row of [false, true]) {
+  test(`closing a ${row ? "pinned row" : "Top App"} follows awake MRU across pinned and regular tabs`, () => {
+    S().hydrate({});
+    useLifecycle.setState({ discarded: {} });
+    const w = S().createWindow({ url: "https://regular.example" });
+    const regular = active(w);
+    const pin = S().newTab(w, { url: "https://other-pin.example" });
+    S().pinTabs([pin], true, row);
+    const target = S().newTab(w, { url: "https://target-pin.example" });
+    S().pinTabs([target], true, row);
+    S().updateTab(regular, { lastActiveAt: 10 });
+    S().updateTab(pin, { lastActiveAt: 20 });
+    S().closeTab(target);
+    assert.equal(active(w), pin, "a more recent pin beats the regular section");
+    assert.equal(S().tabs[target].page.kind, "asleep");
+    S().activate(target);
+    S().updateTab(regular, { lastActiveAt: 30 });
+    S().updateTab(pin, { lastActiveAt: 20 });
+    S().closeTab(target);
+    assert.equal(active(w), regular, "a more recent regular tab beats the pinned section");
+    S().activate(target);
+    useLifecycle.setState({ discarded: { [regular]: true } });
+    S().closeTab(target);
+    assert.equal(active(w), pin, "a sleeping regular tab is skipped");
+  });
+}
+
+for (const row of [false, true]) {
+  test(`closing a regular tab can return to a more recent ${row ? "pinned row" : "Top App"}`, () => {
+    S().hydrate({});
+    useLifecycle.setState({ discarded: {} });
+    const w = S().createWindow({ url: "https://pin.example" });
+    const pin = active(w);
+    S().pinTabs([pin], true, row);
+    const target = S().newTab(w, { url: "https://target.example" });
+    const neighbour = S().newTab(w, { url: "https://neighbour.example", background: true });
+    S().activate(target);
+    S().updateTab(pin, { lastActiveAt: 20 });
+    S().updateTab(neighbour, { lastActiveAt: 10 });
+    S().closeTab(target);
+    assert.equal(active(w), pin);
+    assert.ok(!S().tabs[target]);
+    assert.ok(S().tabs[pin].lastActiveAt > 20, "the close-selected tab becomes most recent");
+  });
+}

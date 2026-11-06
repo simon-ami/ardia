@@ -1,3 +1,4 @@
+import { lastAwakeTab } from "./awakeMru";
 import type { BrowserState } from "../browser/store";
 import { leaveGroups } from "../groups/groups";
 import { IDLE_LIVE, inPinnedContainer, makeTab, navigationTo, TILE_PIN, viewTabIds, without } from "../browser/model";
@@ -138,7 +139,7 @@ export function removeTabs(s: BrowserState, ids: string[], record: boolean): Bro
       const awake = left.filter((id) => !isAsleep(s.tabs[id]));
       const after = awake.length ? awake : left;
       const index = before.indexOf(activeId);
-      const next = openerSuccessor(s, activeId, before, left) ?? after.find((id) => before.indexOf(id) > index) ?? after.at(-1);
+      const next = lastAwakeTab(s, w.id, profileId, gone) ?? openerSuccessor(s, activeId, before, left) ?? after.find((id) => before.indexOf(id) > index) ?? after.at(-1);
       if (next) activeTabIds[profileId] = next;
       else delete activeTabIds[profileId];
     }
@@ -162,7 +163,7 @@ export function removeTabs(s: BrowserState, ids: string[], record: boolean): Bro
   for (const w of Object.values(next.windows)) {
     const id = w.activeTabIds[w.profileId];
     const t = id ? next.tabs[id] : undefined;
-    if (t && needsPage(t)) next = apply(next, activated(next, t.id));
+    if (t && (needsPage(t) || gone.has(s.windows[w.id]?.activeTabIds[w.profileId] ?? ""))) next = apply(next, activated(next, t.id));
   }
   return next;
 }
@@ -214,7 +215,7 @@ export function unloadPinnedTabs(s: BrowserState, requested: string[]): BrowserS
     for (const [profileId, activeId] of Object.entries(w.activeTabIds)) {
       if (!gone.has(activeId)) continue;
       const shown = profileId === w.profileId;
-      let replacement = lastRegularTab(s, w, activeId, closing) ?? lastLivePinnedTab(s, w, activeId, closing);
+      let replacement = lastAwakeTab(s, w.id, profileId, closing);
       if (!replacement) [next, replacement] = withNewTab(next, w.id, { profileId, background: !shown });
       if (shown) next = apply(next, activated(next, replacement));
       else {
@@ -231,23 +232,6 @@ function backToPin(s: BrowserState, t: Tab): Partial<Tab> {
   if (!home || !t.url || samePage(t.url, home)) return {};
   const entry = historyOf(s, t.profileId).find((h) => samePage(h.url, home));
   return { ...onUrlChange(s, t, home), url: home, ...(entry ? { title: entry.title, favicon: entry.favicon ?? t.favicon } : {}) };
-}
-
-function lastRegularTab(s: BrowserState, w: BrowserWindow, id: string, closing: Set<string>): string | undefined {
-  const profileId = s.tabs[id]!.profileId;
-  const candidates = w.tabIds.filter((t) => !closing.has(t) && s.tabs[t]?.profileId === profileId && !inPinnedContainer(s, t));
-  const panes = splitTabIdsOf(splitOf(s, id))?.filter((t) => candidates.includes(t)) ?? [];
-  const pool = panes.length ? panes : candidates;
-  return pool.reduce<string | undefined>((best, t) => (!best || s.tabs[t]!.lastActiveAt > s.tabs[best]!.lastActiveAt ? t : best), undefined);
-}
-
-function lastLivePinnedTab(s: BrowserState, w: BrowserWindow, id: string, closing: Set<string>): string | undefined {
-  const profileId = s.tabs[id]!.profileId;
-  const live = w.tabIds.filter((t) => {
-    const tab = s.tabs[t];
-    return !closing.has(t) && tab?.profileId === profileId && inPinnedContainer(s, t) && hasPage(tab);
-  });
-  return live.reduce<string | undefined>((best, t) => (!best || s.tabs[t]!.lastActiveAt > s.tabs[best]!.lastActiveAt ? t : best), undefined);
 }
 
 export function withNewTab(s: BrowserState, windowId: string, o: NewTabOptions = {}): [BrowserState, string] {

@@ -1,9 +1,8 @@
 import { useBrowser } from "../browser/store";
-import { activeTabId, viewTabIds } from "../browser/model";
+import { activeTabId } from "../browser/model";
 import { webviews } from "../../platform/webviews";
 import { isSleeping } from "./sleepingTabs";
-import { isPageUnloaded } from "../pins/pinShare";
-import { hasPage } from "./pageSession";
+import { lastAwakeTab } from "./awakeMru";
 import { showToast } from "../app/toasts";
 
 export function leaveDiscardedTabs(ids: readonly string[]) {
@@ -12,9 +11,8 @@ export function leaveDiscardedTabs(ids: readonly string[]) {
   for (const w of Object.values(s.windows)) {
     const active = activeTabId(s, w.id);
     if (!active || !excluded.has(active)) continue;
-    const candidates = viewTabIds(s, w.id).filter((id) => !excluded.has(id) && hasPage(s.tabs[id]!) && !isSleeping(id) && !isPageUnloaded(s, id));
-    candidates.sort((a, b) => s.tabs[b]!.lastActiveAt - s.tabs[a]!.lastActiveAt);
-    if (candidates[0]) useBrowser.getState().activate(candidates[0]);
+    const replacement = lastAwakeTab(s, w.id, w.profileId, excluded);
+    if (replacement) useBrowser.getState().activate(replacement);
     else useBrowser.getState().newTab(w.id);
   }
 }

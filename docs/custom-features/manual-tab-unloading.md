@@ -29,3 +29,5 @@
   including across shared-data spaces. Auto Tab Discard still behaves oddly as before (#634);
   Simon accepts the native command as the preferred path and does not require more extension debugging now.
 - Upstream replacement evidence and removal approval: none.
+
+- [Shared close/unload successor selection](cross-section-close-mru.md) applies the same MRU rule across tab sections.

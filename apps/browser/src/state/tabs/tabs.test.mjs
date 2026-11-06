@@ -49,7 +49,9 @@ test("closing a page opened in front returns to its opener unless you moved away
   assert.equal(shown(w), "b", "after moving away, the tab after it");
 });
 
-test("closing goes to the page's own tabs, then its siblings, then its opener", () => {
+test("closing follows MRU over sibling preference while preserving opener links", (t) => {
+  let clock = Date.now();
+  t.mock.method(Date, "now", () => ++clock);
   reset();
   const [w, a] = setup("a", "b");
   const c1 = open(w, "c1", a);
@@ -62,7 +64,7 @@ test("closing goes to the page's own tabs, then its siblings, then its opener", 
   S().activate(a);
   S().activate(c2);
   S().closeTab(c2);
-  assert.equal(shown(w), "g", "a sibling");
+  assert.equal(shown(w), "a", "the most recently visited tab beats a sibling");
   S().closeTab(g);
   assert.equal(shown(w), "a", "no siblings left: the opener");
 });
@@ -102,7 +104,7 @@ test("a pinned tab's links keep their group down to the last one; a loose tab's 
   assert.ok(!Object.values(S().groups).some((g) => g.tabIds.includes(home)));
 });
 
-test("closing a pinned tab selects the regular tab the window showed last, not the neighbour", () => {
+test("closing a pinned tab selects the most recently used awake tab regardless of section", () => {
   reset();
   let clock = Date.now();
   const select = (id) => {
@@ -121,7 +123,7 @@ test("closing a pinned tab selects the regular tab the window showed last, not t
   select(q);
   select(p);
   S().closeTab(p);
-  assert.equal(model.activeTabId(S(), w), b, "back to the regular tab used before the pinned ones");
+  assert.equal(model.activeTabId(S(), w), q, "the other pin was used more recently than the regular tab");
   assert.ok(S().tabs[b].page.nav);
   assert.ok(S().tabs[q].page.nav, "the other pinned tab keeps its page");
 });
