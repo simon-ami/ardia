@@ -5,6 +5,7 @@ For an upstream update, review all active features.
 
 ## Records
 
+- [Lazy startup and MRU page eligibility](custom-features/lazy-startup-and-mru.md)
 - [Native manual tab unloading and discard recovery](custom-features/manual-tab-unloading.md)
 - [Optional grayscale favicons for unloaded tabs](custom-features/grayscale-unloaded-favicons.md)
 - [Exclude sleeping tabs from the MRU switcher](custom-features/skip-sleeping-tabs-in-switcher.md)

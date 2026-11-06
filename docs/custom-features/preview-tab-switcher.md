@@ -45,4 +45,5 @@
   `~/Library/Application Support/Ardia Personal/Updates/20261106-175226-e16c3590`.
   Simon confirmed the corrected appearance on 2026-11-06 ("fixed!").
 - Combined with [optional sleeping-tab exclusion](skip-sleeping-tabs-in-switcher.md); both session selection and fallback respect its setting.
+- [MRU eligibility follow-up](lazy-startup-and-mru.md) excludes empty command-bar tabs and corrects the first step when the current tab is excluded.
 - Upstream replacement evidence and removal approval: none.

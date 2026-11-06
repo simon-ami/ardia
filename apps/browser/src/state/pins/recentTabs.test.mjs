@@ -53,3 +53,24 @@ test("with sleeping tabs hidden, the tab switcher skips a tab whose page isn't l
   S().updateTab(b, { page: { kind: "idle" } });
   assert.deepEqual(recentTabIds(S(), w, now), [a, c]);
 });
+
+
+test("empty replacement tabs never enter MRU, including when sleeping tabs are shown", () => {
+  const [w, now, a] = windowWith("a");
+  const blank = S().newTab(w);
+  assert.deepEqual(recentTabIds(S(), w, now), [a]);
+  S().activate(a);
+  S().updateSettings({ sleepingTabsInSwitcher: false });
+  assert.deepEqual(recentTabIds(S(), w), [a]);
+  assert.deepEqual(sessionTabIds(S(), w, now - HOUR), [a]);
+  assert.ok(S().tabs[blank], "the command-bar shell is retained outside MRU");
+});
+
+test("visited Chrome settings pages stay eligible for MRU with sleeping tabs hidden", () => {
+  const [w, now, a] = windowWith("a");
+  const chrome = S().newTab(w, { url: "chrome://extensions/shortcuts" });
+  S().updateSettings({ sleepingTabsInSwitcher: false });
+  S().activate(a);
+  assert.ok(recentTabIds(S(), w).includes(chrome));
+  assert.ok(sessionTabIds(S(), w, now - HOUR).includes(chrome));
+});

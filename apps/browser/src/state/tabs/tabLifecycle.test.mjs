@@ -10,7 +10,7 @@ globalThis.engineCalls = [];
 const stubs = {
   "../../platform/performance": `export * from ${JSON.stringify(performance)};
     export const onSystemState = () => ({ remove() {} });
-    export const systemState = async () => null;
+    export const systemState = async () => ({ physicalMemory: 32 * 2 ** 30, onBattery: false, lowPowerMode: false, memoryPressure: "normal", batteryLevel: 1 });
     export const setBatterySaver = async (mode) => (globalThis.engineCalls.push(["batterySaver", mode]), { state: 0, active: false });
     export const setMemorySaver = async (request) => (globalThis.engineCalls.push(["memorySaver", request]), { ...request, active: request.state === "on", invalid: [] });`,
   "../../platform/profiles": `export * from ${JSON.stringify(profiles)};
@@ -39,6 +39,9 @@ const memorySaverCalls = () => globalThis.engineCalls.filter(([name]) => name ==
 test("the app's Memory Saver settings reach the engine at launch and on every change", async (t) => {
   t.mock.timers.enable({ apis: ["setTimeout"] });
   S().hydrate({ settings: { memorySaver: false, memorySaverMode: "maximum", keepActiveSites: ["music.youtube.com"] } });
+  const w = S().createWindow({ url: "https://shown.example" });
+  const idle = S().newTab(w, { url: "https://idle.example", background: true });
+  S().updateTab(idle, { page: { kind: "idle" } });
   globalThis.engineCalls.length = 0;
   lifecycle.startTabLifecycle();
   assert.deepEqual(memorySaverCalls(), [{ state: "off", aggressiveness: "maximum", sites: ["music.youtube.com"] }]);
@@ -52,6 +55,8 @@ test("the app's Memory Saver settings reach the engine at launch and on every ch
     { state: "on", aggressiveness: "moderate", sites: ["music.youtube.com", "figma.com"] },
   ]);
   for (let i = 0; i < 5; i++) await Promise.resolve();
+  for (let i = 0; i < 6; i++) t.mock.timers.tick(2500);
+  assert.equal(S().tabs[idle].page.kind, "idle", "startup never loads an unvisited background tab");
   assert.deepEqual(globalThis.engineCalls.filter(([name]) => name === "batterySaver").map(([, mode]) => mode), ["off"], "Battery Saver is always Chrome's: on or off, never left to Chrome's default");
 });
 
