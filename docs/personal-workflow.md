@@ -67,6 +67,17 @@ Keep reports brief: result, checks, manual test needed, and decisions for Simon.
 
 ## Local tools
 
+### Choose the build
+
+- For JavaScript-only development, use Metro with an existing compatible Debug build. Do not rebuild the app.
+- After native code, native dependencies, or engine changes, rebuild Debug before testing.
+- After automated checks and Simon's required manual tests pass, build standalone Release for daily use.
+  Release bundles JavaScript and does not need Metro. Verify that the Release app starts before calling it ready.
+- Building Release does not authorize installation, profile migration, or replacement of the official app.
+  Resolve the personal app's identity and secure storage before using real browsing data.
+
+### Commands
+
 Read `docs/agent-brief.md` for build and test commands. Use `scripts/agent/locked pod` for dependency installs.
 Here, `corepack pnpm install --frozen-lockfile` completed cleanly; the Homebrew pnpm executable stalled after installation.
 Use `XCODE_XCCONFIG_FILE="$PWD/apps/browser/macos/AdHoc.xcconfig"` with `scripts/agent/build-app --as personal`
