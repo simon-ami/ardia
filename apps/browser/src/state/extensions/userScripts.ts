@@ -1,4 +1,4 @@
-import { installExtension, listExtensions, reloadExtension, uninstallExtension, type InstalledExtension } from "../../platform/extensions";
+import { installExtension, listExtensions, reloadExtension, setExtensionEnabled, uninstallExtension, type InstalledExtension } from "../../platform/extensions";
 import {
   onUserScriptsChange,
   readUserScripts,
@@ -43,17 +43,29 @@ const BLOCKED = "Ardia Scripts can only hold content scripts, and the engine blo
 
 async function load(profile: string, path: string): Promise<ScriptsOutcome> {
   try {
+    const personalSuffix = "/dev.simon.ardia.personal/Scripts/extension";
+    const previous = path.endsWith(personalSuffix) ? path.slice(0, -personalSuffix.length) + "/com.ardia.browser/Scripts/extension" : null;
+    const migrated = previous ? (await listExtensions(profile)).filter((ext) => loadedFrom(ext, previous)) : [];
+    const removeMigrated = async () => {
+      for (const ext of migrated) await uninstallExtension(ext.id, profile);
+    };
     const find = async (match: (x: InstalledExtension) => boolean) => (await listExtensions(profile)).find(match);
     const existing = await find((x) => loadedFrom(x, path));
     if (existing && !existing.enabled && !existing.blockedByPolicy) {
       await reloadExtension(existing.id, profile);
+      await removeMigrated();
       return { disabled: true };
     }
     const id = await installExtension({ path }, profile);
+    if (!existing && migrated.some((ext) => !ext.enabled && !ext.blockedByPolicy)) await setExtensionEnabled(id, profile, false);
     const loaded = await find((x) => x.id === id);
     if (!loaded) return { error: "The extension didn't load." };
-    if (loaded.enabled) return { ok: true };
+    if (loaded.enabled) {
+      await removeMigrated();
+      return { ok: true };
+    }
     if (loaded.blockedByPolicy) return { error: loaded.errors[0] ?? BLOCKED };
+    if (loaded.state === "DISABLED") await removeMigrated();
     return loaded.state === "DISABLED" ? { disabled: true } : { error: `The extension is ${loaded.state.toLowerCase()}.` };
   } catch (error) {
     return { error: errorText(error) };

@@ -6,11 +6,13 @@ Release builds and starts without Metro. The personal build wrapper creates a se
 bundle ID `dev.simon.ardia.personal`. Its updater feed and URL/document registrations are removed.
 It is not installed. The personal build now supports the shared `Ardia Safe Storage` keychain item.
 Its signing and storage checks are described below. Simon reported the fresh-profile login test passed:
-the website remained signed in after quitting and reopening the personal app. Migration is still pending.
+the website remained signed in after quitting and reopening the personal app. Data has since been copied;
+Simon reports tabs, settings, spaces/profiles, existing logins, Bitwarden, and scripts work in spot checks.
 
 The personal app uses `~/Library/Application Support/dev.simon.ardia.personal` for its own data.
 Its Chromium profiles are in `Chromium`; its editable configuration is in `config`.
-The official app keeps its own data and `~/.config/ardia` configuration. No real data has been copied.
+The official app keeps its own data and `~/.config/ardia` configuration. At migration, the official configuration
+folder did not exist. Its profile and selected window and appearance preferences were copied.
 
 ## Build and sign
 
@@ -35,8 +37,8 @@ signing a changed test binary with the same identity were verified. Do not regen
 | Built apps | The Release app and signed personal copy are separate program files. No browser data is copied during signing. |
 | Signing identity | Reuse one identity for personal builds. The official app keeps its upstream signature. |
 | Cookie encryption key | Both apps use `Ardia Safe Storage` in the macOS keychain. This shares a key, not cookies or profiles. |
-| Browser profiles | Keep separate. Never run both apps against one live profile folder. No real profile has been migrated. |
-| Userscript source | Plan one shared source folder, including imported files. No source folder has been moved or linked yet. |
+| Browser profiles | The official profile was copied into the personal folder. They are independent. Never run both apps against one live profile folder. |
+| Userscript source | All four original source files already reside in `~/Documents/Work/Personal Projects/userscripts`. Both CLIs can use those same files. No source was moved or duplicated. |
 | Installed userscripts | Each profile needs its own installation. Apply source changes to both profiles when desired. |
 | Script and extension data | Treat stored values and extension settings as profile-specific. Do not assume they sync with script source. |
 | CLI | `ardia` keeps the official runtime. `ardia-personal` uses a separate runtime and the personal data folder. |
@@ -83,7 +85,33 @@ The personal app cannot run or update the official CLI installer. Personal backg
 
 For future userscript changes, keep one source file outside both profiles. Install that source separately with
 each CLI when both browsers need it. Source edits alone do not update either installed copy.
-The shared source folder and initial installations are still pending.
+The four installed scripts were copied with the profile. The personal build replaces the copied extension
+reference to the official Scripts folder with its own installation. A disabled installation stays disabled.
+Unrelated extensions and the official profile remain unchanged. Migration omits `Scripts/status.json` so the
+personal build checks and loads the copied scripts at first start.
+
+## Migration record
+
+On 2026-11-06, both browsers were stopped. The official and personal app versions were 0.2.44; both session
+schemas were 9. Cloud sync was disabled. No linked shared folders were found.
+
+- Source: `~/Library/Application Support/com.ardia.browser`.
+- Destination: `~/Library/Application Support/dev.simon.ardia.personal`.
+- Backup: `~/Library/Application Support/Ardia Personal/Backups/20261106-134043`.
+  `official-profile` holds the original snapshot; `personal-before` holds the personal test profile.
+  The directory also holds both preference exports and a migration record. Keep it private and out of Git.
+- Verified 7,076 copied files by SHA-256. The original profile remained byte-identical during the copy.
+- Omitted old lock files, legacy migration markers, script load status, and the pending telemetry queue.
+  Copied appearance and window preferences; retained the personal updater preferences.
+- The four script source files remain shared at their existing location. Installed scripts, extension settings,
+  cookies, history, and tabs are separate copies from this point forward. Later edits do not propagate.
+- Manual validation: Simon reports tabs, settings, spaces/profiles, existing logins, Bitwarden, and scripts
+  work in spot checks. Script execution counts were not measured separately. The extension path cleanup
+  also passed 25 nearby automated checks, typecheck, a Release build, and a hidden launch.
+
+For rollback, stop both apps first. Preserve the current personal folder separately, restore `personal-before`
+to the destination, and import `personal-defaults.plist` into `dev.simon.ardia.personal`. Never overwrite the
+official profile as part of rollback.
 
 ## Verification completed
 
@@ -105,5 +133,5 @@ The shared source folder and initial installations are still pending.
   sealed resources are rejected before keychain access. Run with
   `python3 scripts/personal/tests/signing-test.py --password-file <private-file>` after building the personal app.
 
-The manual test confirms fresh-profile login persistence with the shared-storage build. Existing login
-migration, Bitwarden integration, and daily use remain unverified. The disposable keychain is removed after the test.
+Manual tests confirm fresh-profile login persistence and basic migrated-profile behavior, including existing
+logins and Bitwarden. Extended daily use remains unverified. The disposable keychain is removed after the test.
