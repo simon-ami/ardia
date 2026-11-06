@@ -24,6 +24,7 @@ final class CliInstaller {
 
 
   static var home: URL? {
+    if Bundle.main.object(forInfoDictionaryKey: "ACPersonalBuild") as? Bool == true { return nil }
     if let path = LaunchConfig.shared.instance("cliHome") { return URL(fileURLWithPath: path, isDirectory: true) }
     if LaunchConfig.shared.isolated { return nil }
     return FileManager.default.homeDirectoryForCurrentUser
@@ -79,6 +80,9 @@ final class CliInstaller {
   }
 
   private func run() {
+    if Bundle.main.object(forInfoDictionaryKey: "ACPersonalBuild") as? Bool == true {
+      return finish(failure("This personal build uses the separate ardia-personal command."))
+    }
     if LaunchConfig.shared.isolated && (LaunchConfig.shared.instance("cliHome") == nil || LaunchConfig.shared.instance("cliBinDir") == nil) {
       return finish(failure("A test instance installs only with ARDIA_INSTANCE cliHome and cliBinDir set."))
     }

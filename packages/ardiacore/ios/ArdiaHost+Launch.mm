@@ -1,5 +1,6 @@
 #import "ArdiaHostInternal.h"
 #import "ArdiaLaunchConfig.h"
+#import "ArdiaPersonalSigning.h"
 #import "ArdiaSavedSession.h"
 #import "ArdiaSavedDocument.h"
 #import "ArdiaEarlyWindow.h"
@@ -354,6 +355,14 @@ void StartEarlyWindow() {
 + (int)runWithArgc:(int)argc argv:(char **)argv delegate:(id<NSApplicationDelegate> (^)(void))makeDelegate {
   ArdiaLaunchConfig *config = ArdiaLaunchConfig.shared;
   gScratchDataDir = config.dataDirectory != nil;
+  const bool personalStorage = !gScratchDataDir && [[NSBundle.mainBundle objectForInfoDictionaryKey:@"ACPersonalBuild"] boolValue];
+  if (personalStorage) {
+    const OSStatus status = ArdiaPersonalSigningStatus(NSBundle.mainBundle);
+    if (status != errSecSuccess) {
+      fprintf(stderr, "[ardiacore] personal signing identity rejected (%d)\n", (int)status);
+      return 1;
+    }
+  }
 #if DEBUG
   if (!gScratchDataDir) {
     fprintf(stderr, "[ardiacore] set ARDIA_DATA_DIR to a scratch directory\n");
@@ -429,7 +438,7 @@ void StartEarlyWindow() {
       "--profile-directory=Default",
       "--js-flags=--no-memory-reducer",
   };
-  const bool mockKeychain = gScratchDataDir || !IsTeamSigned();
+  const bool mockKeychain = gScratchDataDir || (!personalStorage && !IsTeamSigned());
   if (mockKeychain) extra.push_back("--use-mock-keychain");
   ardia_host::PrepareStartup(gDataDirectory);
   @autoreleasepool {

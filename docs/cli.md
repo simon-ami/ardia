@@ -280,7 +280,8 @@ before that character's key events; for a field in an iframe it also checks the 
 frame. `tests/fixtures/browse/auth.html#steal` moves focus into a cross-origin iframe on focus; the end-to-end test
 checks no character reaches it. Any process running as the user can read items `/usr/bin/security` created (Keychain lets that tool read its
 own items without a prompt), the same boundary as `ArdiaControl.json`. `ARDIA_BROWSE_KEYCHAIN` points it at another
-keychain file, for tests.
+keychain file, for tests. `ARDIA_BROWSE_KEYCHAIN_SERVICE` selects a separate service name for a personal CLI;
+the default remains `dev.ardia.browse.auth`. Changing it does not copy existing credentials.
 
 `plugin add <npm-name[@version] | owner/repo[#ref]>` pins the exact version (`npm view`) or commit (`git ls-remote`),
 installs it with `npm install --ignore-scripts` into `Browse/plugins/<name>/`, and records it in

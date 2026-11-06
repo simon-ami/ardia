@@ -31,6 +31,10 @@ const fake = (globalThis.acTestUserScripts = {
     },
     reload: async (id, profile) => void calls.push(["reload", profile]),
     uninstall: async (id, profile) => void (calls.push(["uninstall", profile]), installed.get(profile)?.delete(id)),
+    setEnabled: async (id, profile, enabled) => {
+      const extension = installed.get(profile).get(id);
+      Object.assign(extension, { enabled, state: enabled ? "ENABLED" : "DISABLED" });
+    },
   },
 });
 
@@ -220,6 +224,35 @@ test("removal uninstalls everywhere and says so", async () => {
   await settle();
   assert.deepEqual(calls.filter(([k]) => k === "uninstall").map(([, p]) => p).sort(), ["", "work"]);
   assert.deepEqual(lastWrite(), { generation: 8, profiles: { Personal: { removed: true }, "Personal (2)": { removed: true }, Side: { removed: true } } });
+});
+
+test("personal migration replaces only the copied official scripts reference and preserves a disabled profile", async () => {
+  const personal = "/Users/fixture/Library/Application Support/dev.simon.ardia.personal/Scripts/extension";
+  const previous = "/Users/fixture/Library/Application Support/com.ardia.browser/Scripts/extension";
+  for (const [engine, enabled] of [["", true], ["work", false]]) {
+    installed.set(engine, new Map([
+      ["old", { id: "old", path: previous, enabled, state: enabled ? "ENABLED" : "DISABLED" }],
+      ["other", { id: "other", path: "/unrelated/Scripts/extension", enabled: true }],
+    ]));
+  }
+  folder = { state: "ready", generation: 90, path: personal };
+  fake.change();
+  await settle();
+  for (const engine of ["", "work"]) {
+    assert.equal(installed.get(engine).has("old"), false);
+    assert.equal(installed.get(engine).has("other"), true);
+    assert.equal(installed.get(engine).get("abc").path, personal);
+  }
+  assert.equal(installed.get("").get("abc").enabled, true);
+  assert.equal(installed.get("work").get("abc").enabled, false);
+});
+
+test("an ordinary scripts folder leaves the official installation reference alone", async () => {
+  installed.get("").set("old", { id: "old", path: "/Users/fixture/Library/Application Support/com.ardia.browser/Scripts/extension", enabled: true });
+  folder = { state: "ready", generation: 91, path: PATH };
+  fake.change();
+  await settle();
+  assert.equal(installed.get("").has("old"), true);
 });
 
 test("turning the setting off stops watching and ignores changes", async () => {

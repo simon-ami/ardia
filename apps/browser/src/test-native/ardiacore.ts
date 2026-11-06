@@ -29,6 +29,7 @@ type ExtensionEngine = {
   install(path: string, profile: string): Promise<string>;
   reload(id: string, profile: string): Promise<void>;
   uninstall(id: string, profile: string): Promise<void>;
+  setEnabled?(id: string, profile: string, enabled: boolean): Promise<void>;
 };
 const testGlobals = globalThis as {
   acTestTabStrip?: TabStripHost;
@@ -400,7 +401,7 @@ const fakeModules = {
       if (!engine) throw Object.assign(new Error("no extension engine in this test"), { code: "ERR_ENGINE" });
       return { id: await engine.install(path, profile) };
     },
-    setEnabled: async ({ id }) => (await extensionAnswers.change("setEnabled", id), { ok: true }),
+    setEnabled: async ({ id, profile, enabled }) => (await extensionAnswers.change("setEnabled", id), await extensionEngine()?.setEnabled?.(id, profile, enabled), { ok: true }),
     uninstall: async ({ profile, id }) => (await extensionAnswers.change("uninstall", id), await extensionEngine()?.uninstall(id, profile), { ok: true }),
     reload: async ({ profile, id }) => (await extensionAnswers.change("reload", id), await extensionEngine()?.reload(id, profile), { ok: true }),
     configure: async ({ id }) => (await extensionAnswers.change("configure", id), { ok: true }),

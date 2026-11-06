@@ -191,17 +191,25 @@ BOOL SignedForDistribution() {
   static dispatch_once_t once;
   dispatch_once(&once, ^{
     shared = [[ArdiaLaunchConfig alloc] initWithEnvironment:NSProcessInfo.processInfo.environment
+                                                   bundle:NSBundle.mainBundle
                                       signedForDistribution:^BOOL { return SignedForDistribution(); }];
   });
   return shared;
 }
 
 - (instancetype)initWithEnvironment:(NSDictionary<NSString *, NSString *> *)environment
+                             bundle:(NSBundle *)bundle
               signedForDistribution:(BOOL (^)(void))signedForDistribution {
   if ((self = [super init])) {
     _dataDirectory = StandardizedDirectory(environment[kDataDirVariable]);
-    _configDirectory = _dataDirectory ? [_dataDirectory stringByAppendingPathComponent:@"config"]
-                                      : [NSHomeDirectory() stringByAppendingPathComponent:@".config/ardia"];
+    const BOOL personal = [[bundle objectForInfoDictionaryKey:@"ACPersonalBuild"] boolValue];
+    if (personal && (!bundle.bundleIdentifier.length || [bundle.bundleIdentifier isEqualToString:@"com.ardia.browser"]))
+      [NSException raise:NSInvalidArgumentException format:@"A personal build needs its own bundle identifier"];
+    if (_dataDirectory) _configDirectory = [_dataDirectory stringByAppendingPathComponent:@"config"];
+    else if (personal) {
+      NSString *support = NSSearchPathForDirectoriesInDomains(NSApplicationSupportDirectory, NSUserDomainMask, YES).firstObject;
+      _configDirectory = [[support stringByAppendingPathComponent:bundle.bundleIdentifier] stringByAppendingPathComponent:@"config"];
+    } else _configDirectory = [NSHomeDirectory() stringByAppendingPathComponent:@".config/ardia"];
     _background = BackgroundValue(environment[kBackgroundVariable]);
     const NSInteger port = Trimmed(environment[kRemoteDebuggingPortVariable] ?: @"").integerValue;
     _remoteDebuggingPort = port > 0 && port < 65536 ? @(port) : nil;

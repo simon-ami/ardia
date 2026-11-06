@@ -11,7 +11,7 @@ from ardia_cli.browse import paths
 from ardia_cli.browse.errors import BrowseError, Usage
 
 SECURITY = "/usr/bin/security"
-SERVICE = "dev.ardia.browse.auth"
+SERVICE = os.environ.get("ARDIA_BROWSE_KEYCHAIN_SERVICE", "dev.ardia.browse.auth")
 LOOPBACK_HOSTS = {"localhost", "127.0.0.1", "::1", "[::1]"}
 SECURITY_TIMEOUT = 20
 
