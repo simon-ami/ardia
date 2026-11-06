@@ -26,6 +26,7 @@ function withOpacity(color: string, opacity: number) {
 }
 
 export type SurfaceProps = ViewProps & {
+  grayscale?: boolean;
   fill?: string;
   cornerRadius?: number;
   borderColor?: string;
@@ -39,9 +40,10 @@ export type SurfaceProps = ViewProps & {
 
 export const CA_SHADOW_BLUR = 2;
 
-export function Surface({ fill, cornerRadius = 0, borderColor, borderWidth = 0, borderColors, shadowColor: color, shadowOpacity = 0, shadowRadius = 0, shadowOffset, style, children, ...props }: SurfaceProps) {
+export function Surface({ grayscale = false, fill, cornerRadius = 0, borderColor, borderWidth = 0, borderColors, shadowColor: color, shadowOpacity = 0, shadowRadius = 0, shadowOffset, style, children, ...props }: SurfaceProps) {
   const gradientBorder = !!borderColors && borderColors.length >= 2 && borderWidth > 0;
   const surface: Style = {
+    filter: grayscale ? "grayscale(1)" : undefined,
     backgroundColor: fill,
     borderRadius: cornerRadius,
     ...(borderColor && borderWidth > 0 && !gradientBorder ? { borderColor, borderWidth, borderStyle: "solid" } : {}),

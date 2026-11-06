@@ -26,4 +26,6 @@
   when advanced settings are shown, and no header or rows when hidden. Installed after Simon quit the personal app.
   Layout-update backup: `~/Library/Application Support/Ardia Personal/Updates/20261106-185106-16a59d0a`.
   Simon approved the final grouped layout on 2026-11-06.
+- CI follow-up: the web-demo Surface adapter accepts grayscale and applies the CSS grayscale filter.
+  Workspace typecheck passed. Native app sources and the installed build are unchanged.
 - Upstream replacement evidence and removal approval: none.
