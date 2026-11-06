@@ -12,6 +12,7 @@ enum CommandTable {
     case restoreClosed
     case focusCommandBar
     case closeTab
+    case unloadTabs
     case closeAllTabs
     case print
     case copyUrl
@@ -122,6 +123,7 @@ enum CommandTable {
     "reopenClosedWindow": "Reopen Closed Window",
     "focusCommandBar": "Open Command Bar",
     "closeTab": "Close Tab",
+    "unloadTabs": "Unload Tab(s)",
     "closeAllTabs": "Close All Tabs",
     "print": "Print…",
     "copyUrl": "Copy URL",

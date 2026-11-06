@@ -88,6 +88,7 @@ enum MainMenu {
       .separator(),
       closeWindow,
       cmd(.closeTab),
+      cmd(.unloadTabs),
       cmd(.closeAllTabs),
       cmd(.cleanUpTabs),
       .separator(),

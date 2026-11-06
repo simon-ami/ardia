@@ -1,3 +1,4 @@
+import { discardTabs } from "../tabs/discardActions";
 import { chooseFromMenu, type ChoiceItem } from "../app/menuChoice";
 import { moveTabsToProfile, switchToTab } from "../browser/actions";
 import { useBrowser, type BrowserState } from "../browser/store";
@@ -30,6 +31,7 @@ export function multiTabMenuItems(s: BrowserState, windowId: string, ids: string
       { id: "pin", title: f.allPinned ? `Unpin ${n} Tabs` : `Move ${n} Tabs to Top Apps`, symbol: f.allPinned ? "pin.slash" : "pin" },
       ...(f.tabs.every(isPinnedRow) ? [] : [{ id: "pinRows", title: `Move ${n} Tabs to ${pinnedSectionTitle(s, f.tabs[0])}` }]),
     ],
+    [{ id: "unload", title: `Unload ${n} Tabs`, symbol: "moon" }],
     [{ id: "duplicate", title: `Duplicate ${n} Tabs`, symbol: "plus.square.on.square" }],
     [
       { id: "newGroup", title: `New Group with ${n} Tabs`, symbol: "folder.badge.plus", enabled: !f.allTiles, ...hintWhen(!f.allTiles, "newGroupWithTabs", s) },
@@ -81,6 +83,7 @@ export async function openMultiMenu(windowId: string, shown: string[]) {
   else if (choice === "copy") copyUrls(ids, false);
   else if (choice === "copyMd") copyUrls(ids, true);
   else if (choice === "bar") void bookmarkTabs(windowId, ids, { kind: "folder", parentId: undefined });
+  else if (choice === "unload") void discardTabs(ids);
   else if (choice === "close") s.closeTabs(ids);
   else if (choice === "closeOthers") s.closeTabs(here(f.others));
   if (choice !== "copy" && choice !== "copyMd") store().setSelection(windowId, []);

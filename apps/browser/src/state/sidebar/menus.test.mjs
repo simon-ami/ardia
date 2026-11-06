@@ -72,6 +72,7 @@ test("a shown tab's menu follows Dia's sections, and its hints are the keys that
     "Change Icon… [photo]",
     "Mute Tab [speaker.slash]",
     "Mute Site [speaker.slash] ⌥ (alt)",
+    "Unload Tab [moon]",
     "---",
     "Close [xmark] ⌘W",
     "Close Other Tabs",
@@ -139,6 +140,7 @@ test("a Top Apps tile: unpin first, folders instead of groups, Open in New Windo
     "Change Icon… [photo]",
     "Mute Tab [speaker.slash]",
     "Mute Site [speaker.slash] ⌥ (alt)",
+    "Unload Tab [moon]",
   ]);
   assert.deepEqual(sub(tabMenuItems(S(), w, S().tabs[ids[0]]), "pinnedPage"), [
     "Back to Pinned URL [arrow.uturn.backward] (off)",
@@ -173,6 +175,8 @@ test("several tabs: counts in the titles, Move N Tabs to Profile, and Close N Ta
   assert.deepEqual(top(multiTabMenuItems(S(), w, [ids[0], ids[1]])), [
     "Move 2 Tabs to Top Apps [pin]",
     "Move 2 Tabs to Pinned in Personal",
+    "---",
+    "Unload 2 Tabs [moon]",
     "---",
     "Duplicate 2 Tabs [plus.square.on.square]",
     "---",

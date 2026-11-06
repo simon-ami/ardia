@@ -6,7 +6,7 @@ import { useTheme } from "../ui/theme";
 import { FADED_TAB_OPACITY, sidebarTokens } from "./tokens";
 import { useTab } from "../../state/browser/hooks";
 import { ENGINE_NAMES, ENGINE_SYMBOLS, type PageEngine } from "../../state/engines/engines";
-import { FADED, markedEngine, useIconMarks } from "../../state/sidebar/rowState";
+import { FADED, markedEngine, useIconMarks, useGrayscaleTabIcon } from "../../state/sidebar/rowState";
 import { NO_GROUP_ICON } from "../../state/groups/groupIcons";
 import { iconSymbol } from "../../lib/customIcon";
 import { Favicon } from "../favicon/Favicon";
@@ -35,10 +35,11 @@ export const TabIcon = memo(function TabIcon({
   marks?: number;
 }) {
   const size = compact ? COMPACT_ICON : givenSize;
+  const grayscale = useGrayscaleTabIcon(tabId ?? "");
   const sleeping = useIsSleeping(tabId ?? "");
   const marks = useIconMarks(tabId, givenMarks);
   const engine = tabId && size >= 14 ? markedEngine(marks) : null;
-  const props = { url, favicon, icon, size, color, direct };
+  const props = { url, favicon, icon, size, color, direct, grayscale };
   return (
     <View style={{ opacity: sleeping || marks & FADED ? FADED_TAB_OPACITY : 1 }}>
       {profile || !tabId ? <Icon {...props} profileId={profile} /> : <TabProfileIcon {...props} tabId={tabId} />}
@@ -86,6 +87,7 @@ function Icon({
   color,
   profileId,
   direct,
+  grayscale,
 }: {
   url: string;
   favicon?: string | null;
@@ -94,6 +96,7 @@ function Icon({
   color?: string;
   profileId?: string;
   direct?: boolean;
+  grayscale?: boolean;
 }) {
   const theme = useTheme();
   const symbol = iconSymbol(icon);
@@ -108,5 +111,5 @@ function Icon({
       </View>
     );
   }
-  return <Favicon url={url} favicon={favicon} size={size} profileId={profileId} direct={direct} />;
+  return <Favicon url={url} favicon={favicon} size={size} profileId={profileId} direct={direct} grayscale={grayscale} />;
 }

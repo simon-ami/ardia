@@ -1,3 +1,4 @@
+import { leaveDiscardedTabs } from "../../state/tabs/discardActions";
 import { WebView } from "../ui";
 import { type OpenWindowRequest, openFromPage } from "../../state/tabs/openFromPage";
 import type { PageEngine } from "../../state/engines/engines";
@@ -235,6 +236,7 @@ function EngineWebView({ tabId, visible, warm, peekOf, engine }: TabWebViewProps
         updateLive(tabId, { isLoading: false, canGoBack: false, canGoForward: false, playingAudio: false });
         setPageProgress(tabId, 0);
         noteDiscarded(tabId);
+        leaveDiscardedTabs([tabId]);
       }}
       onActivateRequest={() => {
         const t = tab();

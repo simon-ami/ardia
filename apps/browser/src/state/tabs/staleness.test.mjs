@@ -28,7 +28,7 @@ const { useBrowser } = await import("../browser/store.ts");
 const { useIsActiveTab, useTab, useTabLive, WindowContext } = await import("../browser/hooks.ts");
 const { useTabValue, useStoreWhile, shallowEqual } = await import("./tabWatch.ts");
 const { usePageProgress, setPageProgress, watchPageProgress } = await import("./pageProgress.ts");
-const { useRowState, useFadeTabTitle, useIconMarks, FADED, mutedBy, ACTIVE, SELECTED, PLAYING, LOADING } = await import("../sidebar/rowState.ts");
+const { useRowState, useGrayscaleTabIcon, useFadeTabTitle, useIconMarks, FADED, mutedBy, ACTIVE, SELECTED, PLAYING, LOADING } = await import("../sidebar/rowState.ts");
 const { useSidebarUi, setSidebarUi } = await import("../sidebar/sidebarUi.ts");
 const { useIsSleeping, noteDiscarded, noteReady } = await import("./tabLifecycle.ts");
 const { useMedia, setPictureInPictureState } = await import("../media/media.ts");
@@ -316,5 +316,26 @@ test("title fading responds to sleeping and unloaded pages independently of icon
   assert.equal(title.value, false, "loading restores title opacity");
   title.unmount();
   loadedTitle.unmount();
+  icon.unmount();
+});
+
+
+test("favicon grayscale follows sleeping and unloaded tabs independently of opacity settings", () => {
+  const { w, a } = setup();
+  const b = S().newTab(w, { url: "https://b.com/", background: true });
+  const icon = mount(() => useGrayscaleTabIcon(b));
+  assert.equal(icon.value, false);
+  S().updateSettings({ grayscaleUnloadedFavicons: true, fadeUnloadedTabs: false, fadeUnloadedTabTitles: false });
+  assert.equal(icon.value, false);
+  noteDiscarded(b);
+  assert.equal(icon.value, true);
+  S().updateSettings({ grayscaleUnloadedFavicons: false });
+  assert.equal(icon.value, false);
+  noteReady(b);
+  S().updateSettings({ grayscaleUnloadedFavicons: true });
+  S().updateTab(b, { page: { kind: "idle" } });
+  assert.equal(icon.value, true);
+  assert.equal(S().settings.fadeUnloadedTabs, false);
+  assert.equal(S().settings.fadeUnloadedTabTitles, false);
   icon.unmount();
 });

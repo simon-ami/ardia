@@ -2,7 +2,7 @@
 
 - Status: active in the fork. Upstream equivalence has not yet been reviewed.
 - Source: [fork PR #2](https://github.com/simon-ami/ardia/pull/2), commit `e44b9e8b8ca084cdc6f722d99d2082d4c5281dce`.
-- Setting: Settings → Tabs → Advanced → **Fade titles of unloaded tabs** (`fadeUnloadedTabTitles`).
+- Setting: Settings → Tabs → Advanced → Unloaded tab appearance → **Fade titles** (`fadeUnloadedTabTitles`).
 - Required behavior:
   - Off by default. When off, titles retain their normal opacity.
   - When on, fade titles for sleeping tabs and unloaded pages, including closed pinned tabs and restored tabs awaiting load.
@@ -17,3 +17,5 @@
 - Manual check when affected: toggle the setting; inspect loaded, unloaded, and sleeping tabs in the affected layouts.
   Wake a tab. Confirm its title returns to normal. Change icon fading separately.
 - Replacement approval: none.
+
+- Optional [favicon grayscale](grayscale-unloaded-favicons.md) is independent of both fading settings.

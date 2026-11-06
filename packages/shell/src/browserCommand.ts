@@ -9,6 +9,7 @@ export type BrowserCommand =
   | "restoreClosed"
   | "focusCommandBar"
   | "closeTab"
+  | "unloadTabs"
   | "closeAllTabs"
   | "print"
   | "copyUrl"

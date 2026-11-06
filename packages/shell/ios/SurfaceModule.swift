@@ -8,6 +8,7 @@ public class SurfaceModule: Module {
     Name("ArdiaSurface")
 
     View(Surface.self) {
+      Prop("grayscale") { (view: Surface, enabled: Bool) in view.grayscale = enabled }
       Prop("fill") { (view: Surface, hex: String?) in view.surfaceFill = hex.flatMap { RGBA(hex: $0)?.srgb } }
       Prop("cornerRadius") { (view: Surface, v: Double) in view.surfaceRadius = v }
       Prop("borderColor") { (view: Surface, hex: String?) in view.surfaceBorderColor = hex.flatMap { RGBA(hex: $0)?.srgb } }

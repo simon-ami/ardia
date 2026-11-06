@@ -22,7 +22,7 @@ const BEFORE = {"legacyTrue":{"chosen":["newTabPosition","newTabButtonPosition"]
 const doc = (version, settings) => ({ version, profiles: { default: PROFILE }, profileOrder: ["default"], settings, windows: [], windowOrder: [], tabs: [], groups: [], splits: [], closedTabs: [], closedWindows: [] });
 const loaded = () => {
   const { settings: st, settingsMeta } = S();
-  return { chosen: settingsMeta.chosen, inferred: settingsMeta.inferred, batterySaverWhen: st.batterySaverWhen, newTabButtonPosition: st.newTabButtonPosition, newTabPosition: st.newTabPosition, tabLayout: st.tabLayout, peekModifier: st.peekModifier, splitLinkModifier: st.splitLinkModifier, keys: Object.keys(st).length + 2 };
+  return { chosen: settingsMeta.chosen, inferred: settingsMeta.inferred, batterySaverWhen: st.batterySaverWhen, newTabButtonPosition: st.newTabButtonPosition, newTabPosition: st.newTabPosition, tabLayout: st.tabLayout, peekModifier: st.peekModifier, splitLinkModifier: st.splitLinkModifier, keys: Object.keys(st).filter((key) => key !== "sleepingTabsInSwitcher" && key !== "grayscaleUnloadedFavicons").length + 2 };
 };
 
 for (const version of [3, 4, 7]) {
@@ -32,6 +32,8 @@ for (const version of [3, 4, 7]) {
       stub.docs.set("session.json", JSON.stringify(doc(version, structuredClone(settings))));
       S().hydrate(loadSession());
       assert.deepEqual(loaded(), BEFORE[name]);
+      assert.equal(S().settings.sleepingTabsInSwitcher, true);
+      assert.equal(S().settingsMeta.chosen.includes("sleepingTabsInSwitcher"), false);
       assert.equal(S().settings.fadeUnloadedTabTitles, false);
       assert.equal(S().settingsMeta.chosen.includes("fadeUnloadedTabTitles"), false);
       assert.equal(S().settingsMeta.inferred.includes("fadeUnloadedTabTitles"), false);
