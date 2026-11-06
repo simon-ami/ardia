@@ -76,6 +76,10 @@ For copies or migrations, state what stays shared and what becomes an independen
   Release bundles JavaScript and does not need Metro. Verify that the Release app starts before calling it ready.
 - Building Release does not authorize installation, profile migration, or replacement of the official app.
   Resolve the personal app's identity and secure storage before using real browsing data.
+- Simon approved the personal installation at `~/Applications/Ardia Personal.app`. After the required checks
+  and manual tests pass, use `scripts/personal/build-app.py --install` for approved personal app updates.
+  Quit the personal app before replacement; never stop Simon's browser yourself.
+  Keep the official app and default-browser choice unchanged unless Simon requests a change.
 
 ### Commands
 

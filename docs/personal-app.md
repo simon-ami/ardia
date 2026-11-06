@@ -3,8 +3,9 @@
 ## Current state
 
 Release builds and starts without Metro. The personal build wrapper creates a separate signed app with
-bundle ID `dev.simon.ardia.personal`. Its updater feed and URL/document registrations are removed.
-It is not installed. The personal build now supports the shared `Ardia Safe Storage` keychain item.
+bundle ID `dev.simon.ardia.personal`. Its updater feed is removed. It registers HTTP and HTTPS support;
+it does not register file or document handlers. The app is installed at `~/Applications/Ardia Personal.app`.
+The personal build supports the shared `Ardia Safe Storage` keychain item.
 Its signing and storage checks are described below. Simon reported the fresh-profile login test passed:
 the website remained signed in after quitting and reopening the personal app. Data has since been copied;
 Simon reports tabs, settings, spaces/profiles, existing logins, Bitwarden, and scripts work in spot checks.
@@ -20,6 +21,16 @@ Run `python3 scripts/personal/build-app.py`. It calls the existing locked build 
 and signs the copy. `--sign-only` reuses an existing Release build. The output is
 `apps/browser/build-personal-signed/Ardia Personal.app`.
 
+For an approved daily-use update, add `--install`. It verifies the signed app, copies it to
+`~/Applications/Ardia Personal.app`, and registers HTTP and HTTPS support. It does not select a default browser.
+Quit the personal app first. The installer refuses to replace a running app or an unrelated bundle.
+It keeps the previous installed app at
+`~/Library/Application Support/Ardia Personal/Installed Builds/Ardia Personal.previous.app`.
+It removes this checkout's build copies from the browser-handler registry and registers the installed app.
+`python3 scripts/personal/install-app.py` installs an already signed build without rebuilding or unlocking the key.
+No profile data is copied during app installation. Build and installed copies use the same personal profile;
+they must not run at the same time.
+
 The dedicated signing keychain is `~/Library/Application Support/Ardia Personal/Signing/signing.keychain-db`.
 If locked, obtain its password through the private secret tool and pass the returned file with `--password-file`.
 Never put the password in arguments, logs, Git, or a persistent script. The wrapper locks the keychain after signing.
@@ -34,7 +45,7 @@ signing a changed test binary with the same identity were verified. Do not regen
 | Item | Handling |
 | --- | --- |
 | App source | One Git checkout feeds the builds. |
-| Built apps | The Release app and signed personal copy are separate program files. No browser data is copied during signing. |
+| Built apps | Release, signed build, and installed app are separate program files. Signing and installation do not copy browser data. The two personal app copies use the same personal profile. |
 | Signing identity | Reuse one identity for personal builds. The official app keeps its upstream signature. |
 | Cookie encryption key | Both apps use `Ardia Safe Storage` in the macOS keychain. This shares a key, not cookies or profiles. |
 | Browser profiles | The official profile was copied into the personal folder. They are independent. Never run both apps against one live profile folder. |
@@ -76,6 +87,8 @@ from this checkout in `apps/browser/build-personal-cli`, verifies its archive, a
 Unchanged sources reuse the archive. Old runtimes stay available for running commands.
 The installer adds only `~/.local/bin/ardia-personal`; it does not change `ardia` or the shell configuration.
 Keep this checkout at its current location while using that symlink.
+Simon's global `~/.codex/AGENTS.md` directs browser automation to use `ardia-personal` wherever the Ardia skill
+says `ardia`. The skill text stays unchanged. Use the official command only on an explicit request.
 
 `ardia-personal` always selects the personal data folder. It clears inherited remote-browser endpoints and
 refuses endpoint overrides. CLI credential items use the separate service
@@ -116,7 +129,10 @@ official profile as part of rollback.
 ## Verification completed
 
 - Release build, signature verification including nested code, and hidden launch with no Metro.
-- Personal bundle ID, disabled updater, and absent URL/document registrations.
+- Personal bundle ID, disabled updater, HTTP/HTTPS registration, and absent file/document registrations.
+- Installed app starts hidden with scratch data. Installation refuses a running app and an unrelated bundle.
+  Reinstallation preserves the previous app. Launch Services lists the installed app for HTTPS; the default
+  HTTP/HTTPS browser remains the official installation.
 - Locked-keychain and wrong-password failures without interactive prompts.
 - Refusal to replace a running personal app.
 - Scratch instance loads one window; updater is unconfigured and installed CLI version is absent.

@@ -1,7 +1,7 @@
 # Personal app isolation and local signing
 
-- Status: local on `build/personal-signing`; not merged into `main`. Simon reports the migrated profile works.
-- Source commits: `440226d3`, `6322baac`, `a8bbbdff`. Script-path cleanup ships with this record.
+- Status: implemented and manually validated. Simon reports the migrated profile works.
+- Source commits: `440226d3`, `6322baac`, `a8bbbdff`, `eb58db67`. Installation support ships with this record.
 - Setup and migration record: [personal app setup](../personal-app.md).
 - Required behavior:
   - Build a standalone Release with Simon's existing local signing identity. Keep its backup usable.
@@ -10,6 +10,9 @@
     Scratch and ordinary ad hoc builds keep the mock keychain. Retain real-profile debugging restrictions.
   - Disable the upstream updater and official CLI installer in the personal app.
     Keep `ardia-personal` separate from `ardia`, including its runtime and credential service.
+  - Install at `~/Applications/Ardia Personal.app`. Register HTTP/HTTPS without changing the default browser.
+    Verify signatures before replacement and keep the previous installed app. Both personal app copies share
+    the personal profile; installation does not migrate data again.
   - Preserve shared script source files and separate installed copies. After migration, replace the copied
     official Scripts extension reference only in the personal profile. Preserve a disabled installation.
   - Preserve backups and the original official profile during migration. Never share a live Chromium folder.

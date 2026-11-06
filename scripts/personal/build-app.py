@@ -6,6 +6,7 @@ import plistlib
 import re
 import shutil
 import subprocess
+import sys
 import tempfile
 
 
@@ -24,6 +25,7 @@ def main():
     parser = argparse.ArgumentParser(description="Build and locally sign Ardia Personal for isolated testing.")
     parser.add_argument("--password-file", type=Path, help="Private file holding the signing keychain password")
     parser.add_argument("--sign-only", action="store_true", help="Sign the existing Release build without rebuilding")
+    parser.add_argument("--install", action="store_true", help="Install the signed build in ~/Applications")
     args = parser.parse_args()
     repo = Path(__file__).resolve().parents[2]
     signing = Path.home() / "Library/Application Support/Ardia Personal/Signing"
@@ -63,7 +65,8 @@ def main():
                 with info_path.open("rb") as stream:
                     info = plistlib.load(stream)
                 info.update(CFBundleIdentifier="dev.simon.ardia.personal", CFBundleDisplayName="Ardia Personal", CFBundleName="Ardia Personal", ACPersonalBuild=True, ACPersonalSafeStorage="shared-ardia", ACPersonalSigningCertificateSHA1=identity, SUEnableAutomaticChecks=False, SUAutomaticallyUpdate=False)
-                for key in ["SUFeedURL", "SUPublicEDKey", "CFBundleURLTypes", "CFBundleDocumentTypes"]:
+                info["CFBundleURLTypes"] = [dict(CFBundleURLName="dev.simon.ardia.personal.web", CFBundleURLSchemes=["http", "https"])]
+                for key in ["SUFeedURL", "SUPublicEDKey", "CFBundleDocumentTypes"]:
                     info.pop(key, None)
                 with info_path.open("wb") as stream:
                     plistlib.dump(info, stream)
@@ -81,6 +84,8 @@ def main():
             run(["security", "lock-keychain", keychain], timeout=10)
     print(f"app: {app}")
     print("Uses the shared Ardia Safe Storage item with a separate personal profile. Use ardia-personal for this build.")
+    if args.install:
+        run([sys.executable, repo / "scripts/personal/install-app.py"])
 
 
 if __name__ == "__main__":
