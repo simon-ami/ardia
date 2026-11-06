@@ -5,6 +5,7 @@ For an upstream update, review all active features.
 
 ## Records
 
+- [MRU tab switcher with page previews](custom-features/preview-tab-switcher.md)
 - [Title fading for unloaded and sleeping tabs](custom-features/fade-unloaded-tab-titles.md)
 - [Personal app isolation and local signing](custom-features/personal-app.md)
 

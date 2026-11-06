@@ -63,6 +63,14 @@ For copies, name what stays shared and what becomes independent.
 | Signing, storage, profile formats, or lifecycle scripts | Relevant failure, persistence, backup, and rollback checks. |
 | CLI only | CLI checks; reuse the unchanged app binary when possible. |
 
+Follow this workflow and [the repository testing policy](testing.md#whats-kept-and-why) when choosing checks.
+Do not invoke a separate testing skill unless Simon explicitly asks. Prefer existing app exercises and affected
+regression tests. Add tests for data loss, privacy, integration boundaries, or a demonstrated regression that is
+hard to catch by eye. Do not add tests that only restate implementation details or visual constants.
+For small UI changes, a hidden scratch launch plus Simon's manual interaction and appearance check is sufficient
+alongside typecheck and affected existing tests. Automate repeated E2E checks when their value justifies upkeep.
+Use golden fixtures only with independently reviewed expected results; never accept regenerated output blindly.
+
 Run the required full CI on the PR. Do not duplicate it locally for small changes.
 Use a local full suite when broad or risky changes justify catching regressions before manual testing.
 Run performance checks only for relevant changes or a measured regression. After a fix, rerun the failed area;
