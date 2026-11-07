@@ -131,6 +131,7 @@ and `packages/core` holds the omnibox logic and its tests. `apps/site` is ardia.
 For `simon-ami/ardia`, [the personal workflow](docs/personal-workflow.md) overrides conflicting upstream
 instructions above. Read it for updates, features, commits, and PRs. Track custom behavior in
 [the feature ledger](docs/custom-features.md).
+Keep feature records as short current behavior contracts; follow the ledger's maintenance format.
 
 Run routine work yourself. Use task branches in this checkout. Ask before pushing, opening PRs,
 or removing custom feature code. The upstream release authorization does not apply to this fork.
