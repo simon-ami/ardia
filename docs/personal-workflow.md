@@ -42,7 +42,7 @@ For copies, name what stays shared and what becomes independent.
    including engine changes. Explain material differences or extra scope before proceeding.
 3. Select the focused commits, or port the change when their context does not fit. Keep provenance and explain
    significant adaptations. Preserve author attribution. Resolve routine compatibility changes yourself.
-4. Add an individual ledger record. Follow normal checks, manual tests, and delivery.
+4. Add an individual ledger record in the ledger's compact format. Follow normal checks, manual tests, and delivery.
    Do not open a duplicate upstream PR for someone else's existing contribution.
 
 ## A new feature or adjustment
@@ -50,7 +50,8 @@ For copies, name what stays shared and what becomes independent.
 1. Check current behavior and upstream's open, merged, and relevant closed PRs for the requested outcome.
 2. If an existing solution fits, link it and explain differences before using it. Ask only if the choice changes
    required behavior or scope. Otherwise implement the feature or adjustment on a task branch.
-3. Check the changed behavior, request a focused manual test if needed, and update its individual ledger record.
+3. Check the changed behavior, request a focused manual test if needed, and rewrite its current ledger record.
+   Follow the ledger's maintenance format; do not append a build/install history.
 
 ## Check and build in proportion
 
@@ -102,8 +103,9 @@ which can be the Release build when that is the shortest useful route.
    Run `python3 scripts/personal/install-app.py` once checks allow installation. It validates the recorded
    candidate, snapshots the personal profile and preferences, preserves the current app and CLI reference,
    and installs the paired app and CLI. Do not rebuild a tested candidate just to install it.
-5. Confirm the required user checks. Record results, upstream source, affected features, and delivered build.
-   Then commit locally. Ask for publication approval if it has not already been given.
+5. Confirm the required user checks. Keep test/build/install evidence in the task report, PR, and local update
+   records. Update feature requirements and open limits, not their work history. Then commit locally.
+   Ask for publication approval if it has not already been given.
 
 Do not repeat certificate creation, Bitwarden backup setup, official-profile migration, userscript installation,
 CLI command setup, or default-browser selection for normal updates. Preserve the existing personal profile.

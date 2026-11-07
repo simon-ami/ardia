@@ -16,10 +16,30 @@ For an upstream update, review all active features.
 
 ## Maintain the records
 
-Create one file per feature in `docs/custom-features/`. Add its link here.
-Record the status, source commits or PRs, required behavior, implementation paths, automated checks,
-manual test steps, and upstream replacement evidence and approval in that file.
-Update the record with each feature change or affected upstream update. Track behavior, not just patches.
-Use commit authorship to find possible omissions. Confirm intent before treating unrelated changes as features.
-Ask before removing custom feature code. Keep retired records and their index links for history.
-Keep fork-wide maintenance and update records in `docs/personal-workflow.md`.
+Keep one file per feature in `docs/custom-features/` and link it above. Describe current requirements,
+not a task log. Aim for 100–180 words; complex features may
+need up to 250. Preserve essential requirements even if they need more space. Do not create extra files merely
+to move excess text elsewhere.
+
+Use these fields; omit optional fields when empty:
+
+- Status: active/retired and meaningful validation limits. Do not equate a build passing with behavior validated.
+- Source: the useful origin/port PR references, not a commit inventory. For imports, keep the exact head and attribution.
+- Setting, if present: key, default, and persistence/sync behavior.
+- Behavior: the fork's required differences, important edge cases, and decisions that affect future changes.
+- Code/checks: a few entry points, named regression tests, and a short manual check when affected.
+- Open/Replacement, only when applicable: unresolved behavior or a concrete upstream comparison, its target
+  tag/commit, differences, and Simon's removal decision. No field means not assessed, not proof of no replacement.
+
+Rewrite affected statements instead of appending follow-ups. Remove superseded values and resolved issues.
+Keep accepted design values when they define behavior; omit incidental screenshot measurements.
+Do not add test counts, build transcripts, failed-then-fixed test history, installation dates, candidate versions,
+backup paths, or repeated approvals. Git/PR history and local build/update records hold that evidence.
+Link existing setup/recovery guidance instead of duplicating it. Summarize validation once and state its scope;
+helper tests do not prove real app/extension integration. Mark changed behavior unverified until checked.
+
+Before finishing, read the record as an agent with no chat history: can it preserve the intended behavior and
+find the relevant code/checks? Remove anything that does not help that task.
+Use authorship only to find possible omissions; confirm intent before treating unrelated changes as features.
+Ask before removing custom feature code. Keep a short retired record and its index link.
+Keep fork-wide workflow and update records in `docs/personal-workflow.md`.
