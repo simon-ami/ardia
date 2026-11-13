@@ -103,6 +103,7 @@ which can be the Release build when that is the shortest useful route.
    Run `python3 scripts/personal/install-app.py` once checks allow installation. It validates the recorded
    candidate, snapshots the personal profile and preferences, preserves the current app and CLI reference,
    and installs the paired app and CLI. Do not rebuild a tested candidate just to install it.
+   After activating a changed CLI, follow the installed agent-skill check below.
 5. Confirm the required user checks. Keep test/build/install evidence in the task report, PR, and local update
    records. Update feature requirements and open limits, not their work history. Then commit locally.
    Ask for publication approval if it has not already been given.
@@ -110,6 +111,29 @@ which can be the Release build when that is the shortest useful route.
 Do not repeat certificate creation, Bitwarden backup setup, official-profile migration, userscript installation,
 CLI command setup, or default-browser selection for normal updates. Preserve the existing personal profile.
 Script source files stay shared; update an installed userscript only when its source actually changes.
+
+## Installed agent skills
+
+For upstream or CLI updates, find installed Ardia skills on this Mac with this zsh command.
+It searches existing agent skill directories, follows shared symlinks, and includes hidden files:
+
+```zsh
+rg -l --hidden --no-ignore -L -i 'ardia(-personal)?' \
+  ~/.agents/skills(N) ~/.claude/skills(N) ~/.codex/skills(N) \
+  ~/.config/opencode/skills(N) ~/.cursor/skills(N) ~/.gemini/skills(N) -g SKILL.md
+```
+
+Also inspect project skill directories and paths recorded in `$ARDIA_CLI_HOME/skills.json`
+(default: `~/Library/Application Support/Ardia/CLI/skills.json`). Resolve shared symlinks once.
+Compare each skill and its references with the bundle shipped by the installed personal CLI.
+Check against candidate sources during preparation; refresh only after activating that CLI.
+If the bundle changed, use `ardia-personal skills refresh` where that version supports it.
+It updates marked copies and can update or install its managed `cua-driver` companion; review its output.
+Unmarked copies are skipped. Inspect and back them up before migrating with `skills install`;
+preserve local edits and never use `--replace` blindly. Do not install into unused agents.
+Keep the shipped skill text unchanged. Verify each consuming agent has the instruction to use
+`ardia-personal` wherever the Ardia skill says `ardia`, unless Simon requests the official browser.
+Confirm the installed files match the activated CLI and report any skipped or incompatible copies.
 
 ## GitHub and rollback
 
