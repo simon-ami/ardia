@@ -45,7 +45,7 @@ test("personal build configuration stays separate from the official app", { skip
 
 test("personal CLI pins its profile despite inherited official endpoints", () => {
   const root = resolve(fileURLToPath(new URL("../..", import.meta.url)));
-  const scratch = mkdtempSync(join(tmpdir(), "ardia-personal-cli-"));
+  const scratch = mkdtempSync("/tmp/ap-cli-");
   try {
     const home = join(scratch, "home");
     mkdirSync(home);
@@ -61,10 +61,10 @@ test("personal CLI pins its profile despite inherited official endpoints", () =>
     const path = invoke(["config", "path"]);
     assert.equal(path.status, 0, path.stderr);
     assert.equal(path.stdout.trim(), join(home, "Library/Application Support/dev.simon.ardia.personal/config"));
-    const unavailable = invoke(["exec", "1"]);
+    const unavailable = invoke(["windows"]);
     assert.notEqual(unavailable.status, 0);
     assert.match(unavailable.stderr, /Ardia isn't running/);
-    for (const args of [["exec", "1", "--data-dir", "/official/profile"], ["exec", "1", "--port=1"], ["browse", "--cdp", "http://127.0.0.1:1", "snapshot"], ["exec", "1", "--ws=ws://127.0.0.1:1/devtools/browser/official"]]) {
+    for (const args of [["windows", "--data-dir", "/official/profile"], ["windows", "--port=1"], ["browse", "--cdp", "http://127.0.0.1:1", "snapshot"], ["windows", "--ws=ws://127.0.0.1:1/devtools/browser/official"]]) {
       const result = invoke(args);
       assert.equal(result.status, 64);
       assert.match(result.stderr, /endpoint overrides are refused/);

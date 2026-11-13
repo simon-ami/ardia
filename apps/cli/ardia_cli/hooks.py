@@ -589,7 +589,12 @@ class HookRunner:
             try:
                 await asyncio.wait_for(self._feed(process, payload), self.hook.timeout)
                 status = await asyncio.wait_for(process.wait(), max(deadline - loop.time(), 0))
-                await asyncio.wait_for(asyncio.gather(*pumps), max(deadline - loop.time(), 0))
+                if pumps:
+                    _, pending = await asyncio.wait(pumps, timeout=max(deadline - loop.time(), 0))
+                    if pending:
+                        raise asyncio.TimeoutError
+                    for pump in pumps:
+                        pump.result()
             except asyncio.TimeoutError:
                 timed_out = True
                 status = await self._stop_group(process, pumps)

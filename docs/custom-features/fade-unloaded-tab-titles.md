@@ -4,7 +4,8 @@
 - Source: [fork PR #2](https://github.com/simon-ami/ardia/pull/2), `e44b9e8b`.
 - Setting: Tabs → Advanced → Unloaded tab appearance → Fade titles (`fadeUnloadedTabTitles`), default off.
 - Behavior: fade titles for sleeping/unloaded pages, including closed pins and restored tabs awaiting load.
-  Apply to sidebar, folder panel, top strip, and split tabs. Restore opacity on load/wake; loaded background
+  Apply to sidebar, folder panel, top strip, and split tabs, including pinned tabs showing their current page.
+  Restore opacity on load/wake; loaded background
   tabs stay opaque. Persist and sync the setting. Keep icon fading and grayscale independent.
 - Code: `apps/browser/src/state/sidebar/rowState.ts` (`useFadeTabTitle`) and `state/settings/`.
 - Checks: `apps/browser/src/state/tabs/staleness.test.mjs` and `state/session/sessionSettings.test.mjs`.

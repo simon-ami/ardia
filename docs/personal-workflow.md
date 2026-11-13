@@ -87,7 +87,8 @@ which can be the Release build when that is the shortest useful route.
 1. Run available source-level checks before building. Run `python3 scripts/personal/build-app.py`.
    It prepares the matching engine, reuses a recorded unchanged
    Release or builds one, prepares the matching CLI without activating it, and signs the candidate with
-   Simon's existing certificate. It bundles JavaScript; the delivered app never depends on Metro.
+   Simon's existing certificate. During an uncommitted update merge, it matches the staged engine tree;
+   unstaged or untracked engine files block prebuilt lookup. It bundles JavaScript; the delivered app never depends on Metro.
    If needed, request the signing password through the private secret tool. Never put it in logs, arguments,
    Git, or a persistent script. Use one private password file within the task; remove that temporary file when done.
 2. Run the relevant automated checks and a hidden scratch launch. Check the new signed build record and
@@ -103,6 +104,7 @@ which can be the Release build when that is the shortest useful route.
    Run `python3 scripts/personal/install-app.py` once checks allow installation. It validates the recorded
    candidate, snapshots the personal profile and preferences, preserves the current app and CLI reference,
    and installs the paired app and CLI. Do not rebuild a tested candidate just to install it.
+   After activating a changed CLI, follow the installed agent-skill check below.
 5. Confirm the required user checks. Keep test/build/install evidence in the task report, PR, and local update
    records. Update feature requirements and open limits, not their work history. Then commit locally.
    Ask for publication approval if it has not already been given.
@@ -110,6 +112,35 @@ which can be the Release build when that is the shortest useful route.
 Do not repeat certificate creation, Bitwarden backup setup, official-profile migration, userscript installation,
 CLI command setup, or default-browser selection for normal updates. Preserve the existing personal profile.
 Script source files stay shared; update an installed userscript only when its source actually changes.
+
+## Installed agent skills
+
+For upstream or CLI updates, find installed Ardia skills on this Mac with this zsh command.
+It searches existing agent skill directories, follows shared symlinks, and includes hidden files:
+
+```zsh
+rg -l --hidden --no-ignore -L -i 'ardia(-personal)?' \
+  ~/.agents/skills(N) ~/.claude/skills(N) ~/.codex/skills(N) \
+  ~/.config/opencode/skills(N) ~/.cursor/skills(N) ~/.gemini/skills(N) -g SKILL.md
+```
+
+Also inspect project skill directories and paths recorded in `$ARDIA_CLI_HOME/skills.json`
+(default: `~/Library/Application Support/Ardia/CLI/skills.json`). Resolve shared symlinks once.
+Compare each skill and its references with the bundle shipped by the installed personal CLI.
+Check against candidate sources during preparation; refresh only after activating that CLI.
+If the bundle changed, use `ardia-personal skills refresh` where that version supports it.
+It updates marked copies and can update or install its managed `cua-driver` companion; review its output.
+Unmarked copies are skipped. Inspect and back them up before migrating with `skills install`;
+preserve local edits and never use `--replace` blindly. Do not install into unused agents.
+Preserve the fork's skill customization in `apps/cli/ardia_cli/skill/`, including all references:
+CLI invocations, shell strings, the description, and `allowed-tools` must use `ardia-personal`.
+Keep skill name `ardia`, paths, environment variables, identifiers, and literal app labels unchanged.
+During upstream merges, inspect new examples and conflicts; never restore the official command by accepting
+upstream wholesale. Use `ardia` only when Simon explicitly requests the official browser.
+Older personal CLI bundles can still ship upstream wording. After refresh or reinstall, apply these same
+command substitutions to installed copies without copying newer command documentation into an older CLI.
+Compare installed files with the activated bundle plus these substitutions and report any other differences.
+Verify each consuming agent also has the personal-command instruction.
 
 ## GitHub and rollback
 
@@ -129,6 +160,11 @@ Snapshots and the original migration backup stay private and out of Git. Do not 
 ## Maintenance and update record
 
 Preserve README fork notice `2286d63b`, PR CI workflow `84beb05f`, and the personal-build feature record.
-Starting point after setup: fork `main` at `9d18a24e`. No upstream release-integration baseline is recorded yet.
-For the next update, record the target tag or PR and full commit, candidate, checks, manual result, replacement
-choices, installed build, and final merge. Keep per-feature details in their separate ledger files.
+Starting point after setup: fork `main` at `9d18a24e`.
+The installed update targets `v0.2.45-nightly.3`, commit `ec41f6d944572ccefcfc38a331a6626b5d913dbe`.
+The recorded candidate and installed app match its sources and engine `6b163791fd94422f4152a212f9fcc1ba5d597e0a`;
+the paired CLI is `0.2.45-personal.1`. Simon confirmed login persistence, profiles/settings, scripts,
+Control-Tab previews, and manual unloading passed on 2026-11-13. Custom features remain.
+Private build and installation evidence is in update record `20261108-161526-38503730`.
+For each update, record its target, candidate, checks, manual result, replacement choices, installed build,
+and final merge. Keep per-feature details in their separate ledger files.

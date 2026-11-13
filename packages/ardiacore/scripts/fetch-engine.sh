@@ -10,16 +10,25 @@ name="Chromium Framework"
 die() { echo "error: $*" >&2; exit 1; }
 
 nearest=0
+staged=0
 case "${1:-}" in
   "") ;;
   --nearest) nearest=1 ;;
-  *) die "usage: fetch-engine.sh [--nearest]" ;;
+  --staged) staged=1 ;;
+  *) die "usage: fetch-engine.sh [--nearest|--staged]" ;;
 esac
 
 git -C "$root" rev-parse --git-dir >/dev/null 2>&1 || die "$root isn't a git checkout: a prebuilt engine is matched to engine/'s git tree"
-[ -z "$(git -C "$root" status --porcelain -- engine)" ] \
-  || die "engine/ has uncommitted changes, and no prebuilt has them: build the engine (docs/engine-build.md)"
-tree=$(git -C "$root" rev-parse HEAD:engine)
+if [ "$staged" = 1 ]; then
+  git -C "$root" diff --quiet -- engine || die "engine/ has unstaged changes"
+  [ -z "$(git -C "$root" ls-files --others --exclude-standard -- engine)" ] || die "engine/ has untracked files"
+  staged_tree=$(git -C "$root" write-tree)
+  tree=$(git -C "$root" rev-parse "$staged_tree:engine")
+else
+  [ -z "$(git -C "$root" status --porcelain -- engine)" ] \
+    || die "engine/ has uncommitted changes, and no prebuilt has them: build the engine (docs/engine-build.md)"
+  tree=$(git -C "$root" rev-parse HEAD:engine)
+fi
 
 remote_table=""
 lookup() {

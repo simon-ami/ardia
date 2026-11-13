@@ -122,7 +122,10 @@ For a deliberately separate CLI update, `prepare-cli.py` activates its prepared 
 `~/.local/bin/ardia-personal`. It does not change `ardia` or the shell configuration.
 Keep this checkout at its current location while using that symlink.
 Simon's global `~/.codex/AGENTS.md` directs browser automation to use `ardia-personal` wherever the Ardia skill
-says `ardia`. The skill text stays unchanged. Use the official command only on an explicit request.
+says `ardia`. The fork's skill and references also use `ardia-personal` for CLI invocations and tool permissions.
+Keep skill name `ardia`, paths, environment variables, and literal app labels unchanged. Preserve these
+substitutions during upstream merges and installed skill refreshes; see [the workflow](personal-workflow.md#installed-agent-skills).
+Use the official command only on an explicit request.
 
 `ardia-personal` always selects the personal data folder. It clears inherited remote-browser endpoints and
 refuses endpoint overrides. CLI credential items use the separate service

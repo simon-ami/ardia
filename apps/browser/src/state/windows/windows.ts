@@ -24,7 +24,7 @@ import { isTopApp, topAppsShared } from "../pins/topApps";
 import { closedWindowEntry, MAX_CLOSED_WINDOWS } from "../pins/closedTabs";
 import { pendingRestore } from "../tabs/adoptIds";
 import { joinedWithCurrent, newTabPlacement } from "../tabs/openers";
-import { sharedElsewhere, sharesTabs } from "../tabs/tabShare";
+import { sharesTabs, tabsClosedWithWindow } from "../tabs/tabShare";
 import { isRegularWindow, isSmall, isSmallWindow, lastActiveProfile, linkProfileOf, mainWindowFor } from "./small";
 import { activated, apply, removeTabs, withNewTab } from "../tabs/tabs";
 import type { AdoptId, BrowserWindow, ClosedWindow, Frame, ParkedPins, Tab, WindowKind } from "../browser/types";
@@ -60,6 +60,7 @@ export type WindowsSlice = {
   toggleSidebar(windowId: string): void;
   switchProfile(windowId: string, profileId: string): void;
   moveTabsToWindow(tabIds: string[], windowId: string | null): string | undefined;
+  returnRefusedMove(tabId: string, fromWindowId: string): void;
   moveTabToProfile(tabId: string, profileId: string): void;
   moveGroupToWindow(groupId: string, windowId: string | null): string | undefined;
   moveGroupToProfile(groupId: string, profileId: string): void;
@@ -197,7 +198,7 @@ export const createWindowsSlice: StateCreator<BrowserState, [], [], WindowsSlice
     const s = returnSharedPages(get(), id);
     const w = s.windows[id];
     if (!w) return;
-    const tabs = w.tabIds.map((t) => s.tabs[t]).filter((t): t is Tab => !!t && !inPinnedContainer(s, t.id) && !sharedElsewhere(s, t));
+    const tabs = tabsClosedWithWindow(s, id);
     const tabIds = tabs.map((t) => t.id);
     const small = isSmallWindow(w);
     let closedWindows = s.closedWindows;
@@ -286,6 +287,13 @@ export const createWindowsSlice: StateCreator<BrowserState, [], [], WindowsSlice
     if (last) next = apply(next, activated(next, last));
     set(next);
     return windowId;
+  },
+
+  returnRefusedMove(tabId, fromWindowId) {
+    const s = get();
+    const tab = s.tabs[tabId];
+    if (!tab || !s.windows[fromWindowId] || tab.windowId === fromWindowId) return;
+    set(moveTabsInto(s, [tabId], fromWindowId));
   },
 
   moveTabToProfile(tabId, profileId) {

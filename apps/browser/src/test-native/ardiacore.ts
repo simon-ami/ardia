@@ -5,6 +5,7 @@ import type {
   CallName,
   CallResult,
   CliControlStatus,
+  CliTabTarget,
   EngineBookmark,
   EngineEvents,
   EventName,
@@ -35,6 +36,7 @@ const testGlobals = globalThis as {
   acTestTabStrip?: TabStripHost;
   acTestCliControl?: (on: boolean | null) => Promise<CliControlStatus> | undefined;
   acTestCliActive?: (tabId: string | null) => Promise<CliControlStatus> | undefined;
+  acTestCliTargets?: (tabId: string) => CliTabTarget | undefined;
   acTestUserScripts?: { engine: ExtensionEngine };
 };
 
@@ -55,9 +57,14 @@ export const emitEvent = <E extends EventName>(name: E, data: EngineEvents[E]) =
   eventsOf(domain).emit(domain, { name, data });
 };
 
+export const engineCalls: { domain: string; verb: string; profile: string }[] = [];
+export const loadedEngineProfiles = new Set<string>([""]);
+export const profilesLoadedCall = { known: true };
+
 function domain<D extends string, Sync extends object>(name: D, handlers: Handlers<D>, sync?: Sync): FakeDomain & Sync {
   const fake: FakeDomain = {
     call: (verb, profile, json) => {
+      engineCalls.push({ domain: name, verb, profile });
       const handler = (handlers as Record<string, ((args: object) => unknown) | undefined>)[verb];
       if (!handler) return Promise.reject(Object.assign(new Error(`${name}.${verb} has no test fake yet`), { code: "ERR_UNKNOWN_CALL" }));
       const args = { ...(JSON.parse(json) as Record<string, unknown>), profile };
@@ -268,6 +275,7 @@ export const profileDataLeft = new Map<string, string[]>();
 export const revealedTabs: string[] = [];
 export const discardedOffers: string[] = [];
 export const installedCrx: { path: string; profile: string }[] = [];
+export const crxInstallFailure: { next: string | null } = { next: null };
 export const linkRoute: { next: LinkRoute } = { next: {} };
 export const resolvedPermissions: { id: string; result: string; remember: boolean }[] = [];
 export const extensionAnswers = {
@@ -308,6 +316,7 @@ const fakeModules = {
       cliControlStatus: () => cliControl(null),
       setCliControl: ({ on }) => cliControl(on),
       setCliActiveTab: ({ tabId }) => testGlobals.acTestCliActive?.(tabId) ?? cliStatus(null),
+      cliTabTargets: ({ tabIds }) => Object.fromEntries(tabIds.map((id) => [id, testGlobals.acTestCliTargets?.(id) ?? { targetId: null, pageGeneration: 0 }])),
     },
     { inputIdleSeconds: () => 3600 },
   ),
@@ -345,6 +354,10 @@ const fakeModules = {
     removeExternalAppAllowance: () => null,
   }),
   ArdiaProfiles: domain("profiles", {
+    loaded: () => {
+      if (!profilesLoadedCall.known) throw Object.assign(new Error("profiles.loaded isn't a call"), { code: "ERR_UNKNOWN_CALL" });
+      return { profiles: [...loadedEngineProfiles] };
+    },
     release: () => null,
     deleteData: ({ profile }) => (deletedProfileData.push(profile), { remaining: profileDataLeft.get(profile) ?? [] }),
     clearBrowsingData: () => null,
@@ -361,7 +374,7 @@ const fakeModules = {
     "passwords",
     {
       list: () => ({
-        passwords: [...(passwordStores.get(current.device)?.values() ?? [])].map((l) => ({ origin: l.origin, username: l.username, created: l.created, modified: l.created })),
+        passwords: [...(passwordStores.get(current.device)?.values() ?? [])].map((l) => ({ origin: l.url, username: l.username, created: l.created, modified: l.created })),
       }),
       unlock: () => ({ unlocked: true }),
       reveal: (args) => ({ password: passwordStores.get(current.device)?.get(loginKey(args))?.password ?? null }),
@@ -374,10 +387,23 @@ const fakeModules = {
     },
     {
       save: async (_profile: string, origin: string, username: string, password: string) => {
-        logins().set(`${origin}\n${username}`, { origin: `${origin}/`, url: origin, username, password, created: Date.now() });
+        const refused = new Error("Could not save the password (invalid, or already saved)");
+        if (!/^https?:\/\/[^/?#]+$/i.test(origin)) throw refused;
+        const stored = new URL(origin).origin;
+        const key = `${stored}\n${username}`;
+        const existing = logins().get(key);
+        if (existing && existing.password !== password) throw refused;
+        if (!existing) logins().set(key, { origin: `${stored}/`, url: stored, username, password, created: Date.now() });
         return JSON.stringify({ ok: true });
       },
-      update: () => unfaked("ArdiaPasswords", "update"),
+      update: async (_profile: string, origin: string, username: string, newUsername: string | null, newPassword: string | null) => {
+        const entry = logins().get(`${origin}\n${username}`);
+        if (!entry) throw new Error("No such password");
+        const renamed = newUsername ?? username;
+        logins().delete(`${origin}\n${username}`);
+        logins().set(`${origin}\n${renamed}`, { ...entry, username: renamed, password: newPassword ?? entry.password });
+        return JSON.stringify({ ok: true });
+      },
     },
   ),
   ArdiaAutofill: domain(
@@ -406,7 +432,13 @@ const fakeModules = {
     reload: async ({ profile, id }) => (await extensionAnswers.change("reload", id), await extensionEngine()?.reload(id, profile), { ok: true }),
     configure: async ({ id }) => (await extensionAnswers.change("configure", id), { ok: true }),
     chooseFolder: () => null,
-    installCrx: ({ profile, path }) => (installedCrx.push({ path: path, profile }), { id: "crx" }),
+    installCrx: ({ profile, path }) => {
+      const failure = crxInstallFailure.next;
+      crxInstallFailure.next = null;
+      if (failure) throw new Error(failure);
+      installedCrx.push({ path: path, profile });
+      return { id: "crx" };
+    },
     resolveInstallPrompt: () => null,
     actionStates: ({ tabId, ids }) => extensionAnswers.actionStates(tabId, ids),
     sidePanelUrl: ({ tabId, extensionId }) => extensionAnswers.sidePanelUrl(tabId, extensionId),
