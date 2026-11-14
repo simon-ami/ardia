@@ -30,6 +30,9 @@ For copies, name what stays shared and what becomes independent.
 2. Compare the target with the fork and active feature requirements. Check relevant upstream code and PRs
    for merged or alternative implementations. Search by behavior, not only titles.
    Untouched code and unrelated PRs do not require exhaustive rereading.
+   Prefer upstream when it provides the same value or more. For partial coverage, use upstream as the base
+   and adapt only the missing behavior or styling when practical. Prepare that variant for Simon to test
+   before finalizing replacements or retiring custom features.
 3. Merge on an update branch. Keep newer fork commits. Resolve mechanical conflicts yourself.
    Ask when a conflict changes intended behavior. Ask before removing custom code, even if upstream replaces it.
 4. Follow the checks and delivery rules below. No new release means report that no update is needed.
@@ -87,7 +90,8 @@ which can be the Release build when that is the shortest useful route.
 1. Run available source-level checks before building. Run `python3 scripts/personal/build-app.py`.
    It prepares the matching engine, reuses a recorded unchanged
    Release or builds one, prepares the matching CLI without activating it, and signs the candidate with
-   Simon's existing certificate. It bundles JavaScript; the delivered app never depends on Metro.
+   Simon's existing certificate. During an uncommitted update merge, it matches the staged engine tree;
+   unstaged or untracked engine files block prebuilt lookup. It bundles JavaScript; the delivered app never depends on Metro.
    If needed, request the signing password through the private secret tool. Never put it in logs, arguments,
    Git, or a persistent script. Use one private password file within the task; remove that temporary file when done.
 2. Run the relevant automated checks and a hidden scratch launch. Check the new signed build record and
@@ -131,9 +135,15 @@ If the bundle changed, use `ardia-personal skills refresh` where that version su
 It updates marked copies and can update or install its managed `cua-driver` companion; review its output.
 Unmarked copies are skipped. Inspect and back them up before migrating with `skills install`;
 preserve local edits and never use `--replace` blindly. Do not install into unused agents.
-Keep the shipped skill text unchanged. Verify each consuming agent has the instruction to use
-`ardia-personal` wherever the Ardia skill says `ardia`, unless Simon requests the official browser.
-Confirm the installed files match the activated CLI and report any skipped or incompatible copies.
+Preserve the fork's skill customization in `apps/cli/ardia_cli/skill/`, including all references:
+CLI invocations, shell strings, the description, and `allowed-tools` must use `ardia-personal`.
+Keep skill name `ardia`, paths, environment variables, identifiers, and literal app labels unchanged.
+During upstream merges, inspect new examples and conflicts; never restore the official command by accepting
+upstream wholesale. Use `ardia` only when Simon explicitly requests the official browser.
+Older personal CLI bundles can still ship upstream wording. After refresh or reinstall, apply these same
+command substitutions to installed copies without copying newer command documentation into an older CLI.
+Compare installed files with the activated bundle plus these substitutions and report any other differences.
+Verify each consuming agent also has the personal-command instruction.
 
 ## GitHub and rollback
 
@@ -153,6 +163,13 @@ Snapshots and the original migration backup stay private and out of Git. Do not 
 ## Maintenance and update record
 
 Preserve README fork notice `2286d63b`, PR CI workflow `84beb05f`, and the personal-build feature record.
-Starting point after setup: fork `main` at `9d18a24e`. No upstream release-integration baseline is recorded yet.
-For the next update, record the target tag or PR and full commit, candidate, checks, manual result, replacement
-choices, installed build, and final merge. Keep per-feature details in their separate ledger files.
+Starting point after setup: fork `main` at `9d18a24e`.
+The installed update targets `v0.2.47-nightly.1`, commit `eea5edb931644dc903bb9118bc8aff52ea6a97a7`.
+The recorded candidate and installed app match current sources; the paired CLI is `0.2.47-personal.1`.
+Simon confirmed the requested manual checks passed, including the adapted upstream switcher, sleeping-tab
+filter, close/unload successors, split panes, and login/settings/script persistence. Use upstream behavior
+with the remaining personal layout and eligibility adaptations. Custom features remain active.
+Private build, installation, checks, and final merge evidence is in
+`apps/browser/build-personal-signed/update-0.2.47-nightly.1/` and update snapshot `20261114-003508-96a0487b`.
+For each update, record its target, candidate, checks, manual result, replacement choices, installed build,
+and final merge. Keep per-feature details in their separate ledger files.

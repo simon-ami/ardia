@@ -6,11 +6,13 @@ import { useBrowser } from "../browser/store";
 import { webviews } from "../../platform/webviews";
 import { focusHeroBar } from "../omnibox/barState";
 import { ancestorIds } from "../groups/groups";
-import { activeTabId, bookmarkProfileId, inPinnedContainer, pinSection, tabLayoutOf, tabTitle, viewTabIds } from "../browser/model";
+import { activeTabId, bookmarkProfileId, inPinnedContainer, pinSection, tabLayoutOf, tabsShownIn, tabTitle, viewTabIds } from "../browser/model";
 import type { ClickMods } from "../drag/drops";
 import { selectedTabIds } from "../pins/organize";
 import { groupLabel, groupOf } from "../pins/tabGrouping";
 import type { Tab } from "../browser/types";
+import { awaitsFirstPage } from "../tabs/pendingAddress";
+import { noteUrlCopied } from "../telemetry/urlCopies";
 import type { BookmarkFolderChoice } from "./menuParts";
 import { DEFAULT_SIDEBAR_WIDTH } from "../../lib/windowLayout";
 import { measureRow, setSidebarUi, sidebarUi, type Target } from "./sidebarUi";
@@ -19,6 +21,12 @@ const store = () => useBrowser.getState();
 
 export function clickTab(windowId: string, tabId: string, mods: ClickMods = {}) {
   store().clickTab(windowId, tabId, mods);
+}
+
+export function tabPlace(tabId: string): string {
+  const s = store();
+  const tab = s.tabs[tabId];
+  return JSON.stringify([tab?.windowId, tab && s.windows[tab.windowId]?.tabIds, tab?.pin, groupOf(s, tabId)?.id ?? null]);
 }
 
 export const resetSidebarWidth = () => store().updateSettings({ sidebarWidth: DEFAULT_SIDEBAR_WIDTH });
@@ -66,7 +74,7 @@ export async function startRename(windowId: string, target: Target) {
   setSidebarUi({ renaming: { windowId, ...target } });
 }
 
-const sidebarShows = (windowId: string) => tabLayoutOf(store(), windowId) === "sidebar" && !!store().windows[windowId]?.sidebarOpen;
+const sidebarShows = (windowId: string) => tabLayoutOf(store(), windowId) === "sidebar" && !!store().windows[windowId] && tabsShownIn(store(), windowId);
 
 async function renameGroupInSheet(windowId: string, groupId: string) {
   const g = store().groups[groupId];
@@ -117,6 +125,7 @@ export function copyUrls(ids: string[], markdown: boolean) {
   if (!tabs.length) return;
   const lines = tabs.map((t) => (markdown ? markdownLink(tabTitle(t), t.url) : cleanUrl(t.url)));
   copyText(markdown && lines.length > 1 ? lines.map((l) => `- ${l}`).join("\n") : lines.join("\n"));
+  for (const t of tabs) noteUrlCopied(awaitsFirstPage(t.id));
 }
 
 export async function bookmarkTabs(windowId: string, ids: string[], folder: BookmarkFolderChoice) {

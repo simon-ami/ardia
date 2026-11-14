@@ -1,6 +1,6 @@
 import { useTheme } from "../ui/theme";
 import { duration } from "../ui/motion";
-import { font, ink, shadow, withAlpha, type ShadowLevel } from "../ui/tokens";
+import { font, ink, radius, shadow, space, withAlpha, type ShadowLevel } from "../ui/tokens";
 import type { GroupColor } from "../../state/browser/types";
 import { GROUP_COLORS } from "../../state/groups/tokens";
 
@@ -14,8 +14,6 @@ const DARK = {
   multiSelectedStroke: "rgba(255,255,255,0.14)",
   dragBorder: "rgba(255,255,255,0.33)",
   dragSilhouette: "#0F0F14",
-  switcherFocus: "rgba(255,255,255,0.3)",
-  switcherOutline: "rgba(255,255,255,0.15)",
   badge: "rgba(255,255,255,0.9)",
   newTabLabel: "#FFFFFF8C",
   newTabIcon: "#FFFFFF40",
@@ -39,8 +37,6 @@ const LIGHT: typeof DARK = {
   multiSelectedStroke: "rgba(0,0,0,0.08)",
   dragBorder: "rgba(0,0,0,0.28)",
   dragSilhouette: "#FFFFFF",
-  switcherFocus: "rgba(0,0,0,0.18)",
-  switcherOutline: "rgba(0,0,0,0.1)",
   badge: "rgba(0,0,0,0.75)",
   newTabLabel: "#00000080",
   newTabIcon: "#00000042",
@@ -69,8 +65,7 @@ export const SIDEBAR_SHADOW = {
   dragGhost: { color: ink.black, opacity: { dark: 0.45, light: 0.18 }, radius: 10, offset: [0, 4] },
   card: shadow.card,
   searchTabs: shadow.dialog,
-  tabSwitcher: { ...shadow.dialog, radius: 28, offset: [0, 12] },
-  previewSwitcher: { color: ink.black, opacity: { dark: 0.45, light: 0.45 }, radius: 32, offset: [0, 14] },
+  tabSwitcher: { ...shadow.dialog, opacity: { dark: 0.45, light: 0.45 }, radius: 32, offset: [0, 14] },
 } satisfies Record<string, ShadowLevel>;
 
 export const FADED_TAB_OPACITY = 0.45;
@@ -84,9 +79,12 @@ export const SIDEBAR_MOTION = { liveFold: duration.long, fold: duration.base, li
 export const HOVER_CARD_IN_SPRING = { response: 0.25, damping: 0.75 } as const;
 export const HOVER_CARD_OUT_SPRING = { response: 0.2, damping: 0.6 } as const;
 
-export const TAB_ROW = { contentLeft: 9, trailing: 6, titleGap: 5, titleHeight: 18, compactTitleHeight: 17, closeSlot: 22 } as const;
+export const TAB_ROW = { contentLeft: 9, trailing: 6, titleGap: 5, titleHeight: 18, compactTitleHeight: 17, closeSlot: 22, renameTextOffset: 1 } as const;
 
 export const TILE_RIM = 1;
+export const TILE_STATUS = { pip: 8, speaker: 9.5, box: { width: 14, height: 12 }, inset: { x: 5, y: 4 } } as const;
+
+export const AWAY_TITLE = { slashAlpha: 0.45, slashGap: 4, pinnedMaxWidth: "45%" } as const;
 
 export const TABULAR_NUMS: ("tabular-nums")[] = ["tabular-nums"];
 
@@ -95,6 +93,8 @@ export const SIDEBAR_TYPE = { compact: font.small.fontSize } as const;
 export function groupTint(color: GroupColor | null | undefined): string | null {
   return color && color !== "none" ? (GROUP_COLORS[color]?.hex ?? null) : null;
 }
+
+export const groupBoxAtRest = (color: GroupColor | null | undefined) => groupTint(color) !== null;
 
 export function groupSurface(color: GroupColor | null | undefined, tokens: SidebarTokens): { fill: string; stroke: string } {
   if (color === "none") return { fill: "transparent", stroke: "transparent" };
@@ -105,22 +105,17 @@ export function groupSurface(color: GroupColor | null | undefined, tokens: Sideb
 export const SIDEBAR_MIN_WIDTH = 160;
 export const SIDEBAR_MAX_WIDTH = 400;
 
-export const SWITCHER = {
+export const TAB_SWITCHER = {
   screenFraction: 0.85, referenceColumns: 7, windowMargin: 40, columnScale: 1.25,
   panelSide: 10, panelTop: 20, panelBottom: 10, cardTopOffset: -10,
   cardPadding: 8, cardBorder: 2, labelGap: 8, labelHeight: 16,
   badgeSize: 42, badgePadding: 5, badgeBorder: 1, badgeRadius: 4, badgeRight: -6, badgeBottom: 6,
-  panelRadius: 18, cardRadius: 6.5, shotRadius: 0, appearMs: 160,
-} as const;
-
-export const SWITCHER_COLORS = {
-  darkPanel: "#1C1C1EF2",
-  lightPanel: "#2A2A2CF2",
-  focus: "rgba(0,0,0,0.7)",
-  clear: "transparent",
-  outline: "rgba(255,255,255,0.12)",
-  page: "#FFFFFF",
-  empty: "#3A3A3C",
+  panelRadius: 18, cardRadius: 6.5, shotRadius: 0,
+  fill: { dark: "#1C1C1EF2", light: "#2A2A2CF2" },
+  focusFill: "rgba(0,0,0,0.7)",
+  restRing: "transparent",
+  pageFill: "#FFFFFF",
+  blankFill: "#3A3A3C",
   onPanel: "#FFFFFFB3",
   onPage: "#000000A6",
 } as const;

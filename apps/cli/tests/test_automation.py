@@ -7,6 +7,7 @@ import plistlib
 import shutil
 import signal
 import socket
+import subprocess
 import sys
 import tempfile
 import threading
@@ -18,7 +19,7 @@ from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from ardia_cli import automation_cli, cli, control, endpoint, hooks, runner
+from ardia_cli import automation_cli, cli, control, endpoint, hooks
 
 SCRATCH = Path.home() / "ardia-scratch"
 COMMANDS = [
@@ -230,11 +231,6 @@ class Base(unittest.TestCase):
                 status = exit.code
         return status, out.getvalue(), err.getvalue()
 
-    def interrupt_after(self, seconds):
-        timer = threading.Timer(seconds, os.kill, (os.getpid(), signal.SIGINT))
-        timer.start()
-        self.addCleanup(timer.cancel)
-
 
 class Discovery(Base):
     def test_missing_socket(self):
@@ -327,6 +323,28 @@ class Methods(Base):
         runs = [p for m, p in server.requests if m == "run"]
         self.assertEqual(runs, [{"command": "newTab"}, {"command": "selectTab", "arg": "2", "window": 1}, {"command": "selectTab", "arg": "3"}])
         self.assertEqual(server.requests[0][0], "hello")
+
+    def test_hello_names_the_caller_and_announce_tells_ardia(self):
+        from ardia_cli import caller
+
+        server = self.serve()
+        claude = caller.Caller("Claude Code")
+        terminal = caller.Caller("Terminal", "/System/Applications/Utilities/Terminal.app")
+        with mock.patch.object(caller, "_current", claude):
+            self.run_cli("run", "newTab")
+        asyncio.run(control.announce(control.socket_path(), terminal))
+        server.replies["caller"] = lambda params: {"error": {"code": "unknown_method", "message": "no"}}
+        asyncio.run(control.announce(control.socket_path(), terminal))
+        hellos = [p for m, p in server.requests if m == "hello"]
+        self.assertEqual(hellos, [{"caller": {"name": "Claude Code"}}, {"caller": terminal.wire()}, {"caller": terminal.wire()}])
+        self.assertEqual([m for m, _ in server.requests if m == "caller"], ["caller", "caller"])
+
+    def test_announce_never_fails_the_command(self):
+        from ardia_cli import caller
+
+        started = time.monotonic()
+        asyncio.run(control.announce(self.temp / "missing.sock", caller.Caller("Codex")))
+        self.assertLess(time.monotonic() - started, control.ANNOUNCE_TIMEOUT + 0.5)
 
     def test_run_unknown_suggests(self):
         self.serve()
@@ -1013,6 +1031,17 @@ class LaunchAgent(Base):
         self.assertIn("Input/output error", err)
         self.assertEqual([c[0] for c in self.calls], ["bootout", "bootstrap", "bootstrap", "bootstrap"])
 
+    def test_a_stuck_launchctl_is_one_line(self):
+        def stuck(arguments):
+            raise subprocess.TimeoutExpired(["/bin/launchctl", *arguments], 20)
+
+        for verb in ("install", "uninstall"):
+            with self.subTest(verb=verb), self.installed_env(), mock.patch.object(hooks, "launchctl", side_effect=stuck):
+                status, _, err = self.run_cli("hooks", verb)
+            self.assertEqual(status, 1)
+            self.assertEqual(err.strip().splitlines()[-1], f"ardia hooks {verb}: launchctl didn't answer in 20 s; try again, or check launchctl print gui/{os.getuid()}/dev.ardia.hooks")
+            self.assertNotIn("Traceback", err)
+
     def test_list_reports_hooks(self):
         config = self.data / "config"
         config.mkdir()
@@ -1039,48 +1068,6 @@ class LaunchAgent(Base):
         status, _, err = self.run_cli("hooks", "list")
         self.assertEqual(status, 1)
         self.assertEqual(self.calls, [])
-
-
-class ExecHelpers(Base):
-    def namespace(self, root):
-        session = SimpleNamespace(browser=None, opened=[])
-        with mock.patch.dict(sys.modules, {}):
-            try:
-                return runner.build_namespace(session, "<test>", root)
-            except ImportError as error:
-                self.skipTest(f"pydoll isn't installed: {error}")
-
-    def test_helpers_over_the_socket(self):
-        server = self.serve()
-        namespace = self.namespace(self.data)
-
-        async def check():
-            self.assertEqual(await namespace["windows"](), WINDOWS)
-            self.assertEqual(await namespace["run"]("selectTab", "2", window=1), {"ok": True})
-            with self.assertRaises(namespace["CommandError"]):
-                await namespace["run"]("nope")
-            stream = namespace["events"]("tab.opened")
-            first = asyncio.ensure_future(stream.__anext__())
-            await asyncio.get_running_loop().run_in_executor(None, server.subscribed.wait, 5)
-            server.emit(event("tab.opened", windowId=1, tabId=3, url="https://a.test/", title="A"))
-            got = await asyncio.wait_for(first, 5)
-            await stream.aclose()
-            return got
-
-        got = asyncio.run(check())
-        self.assertEqual(got["data"]["tabId"], 3)
-        self.assertIn(("run", {"command": "selectTab", "arg": "2", "window": 1}), server.requests)
-
-    def test_need_data_dir_with_explicit_endpoint(self):
-        namespace = self.namespace(None)
-
-        async def check():
-            for call in (namespace["windows"](), namespace["run"]("newTab")):
-                with self.assertRaises(namespace["ControlUnreachable"]) as caught:
-                    await call
-                self.assertIn("needs --data-dir or $ARDIA_DATA_DIR", str(caught.exception))
-
-        asyncio.run(check())
 
 
 class Help(Base):

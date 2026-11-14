@@ -5,7 +5,7 @@ import { layout, useTheme } from "../ui/theme";
 import { useSettings } from "../../state/browser/hooks";
 import { isIncognitoProfile } from "../../state/browser/model";
 import { newCapture } from "../../state/sidebar/listCapture";
-import { useCanTidyPins, useCapturedSidebarEntries, usePinnedCollapsed, usePinnedKept } from "../../state/sidebar/hooks";
+import { useCapturedSidebarEntries, useOffersTidyTabs, usePinnedCollapsed, usePinnedKept } from "../../state/sidebar/hooks";
 import { useAddressBarInSidebar } from "../../state/windows/layout";
 import { ClearDivider } from "./ClearDivider";
 import { useDragController, useDragItem } from "./DragProvider";
@@ -36,12 +36,13 @@ type PageRowsProps = {
   inlineNewTab: boolean;
   controller: ReturnType<typeof useDragController>;
   geometry: RefObject<SidebarGeometry> | undefined;
+  regions: SidebarGeometry["regions"];
   onListHeight: (height: number) => void;
 };
 
 const DOCKED_TILES_GAP = SCROLL_EDGE.gap + SCROLL_EDGE.line + SCROLL_EDGE.inset;
 
-export function PageRows({ windowId, profileId, current, rows, lazy, offScreen, tiles, underDockedTiles, innerWidth, inlineNewTab, controller, geometry, onListHeight }: PageRowsProps) {
+export function PageRows({ windowId, profileId, current, rows, lazy, offScreen, tiles, underDockedTiles, innerWidth, inlineNewTab, controller, geometry, regions, onListHeight }: PageRowsProps) {
   const [captured] = useState(newCapture);
   const { list: all } = useCapturedSidebarEntries(windowId, profileId, captured);
   const [mountedRows, setMountedRows] = useState(() => firstPaintEntriesNow(windowId, profileId, all, lazy));
@@ -59,7 +60,8 @@ export function PageRows({ windowId, profileId, current, rows, lazy, offScreen, 
   const pending = usePendingEntriesHeight(windowId, profileId, all, mountedRows, growing);
   const showClear = useSettings((s) => s.showClearButton);
   const clearable = showClear && !offScreen && all.length > 0;
-  const tidy = useCanTidyPins(windowId, profileId, offScreen);
+  const tidyTabs = useSettings((s) => s.tidyTabs);
+  const tidy = useOffersTidyTabs(windowId, profileId, offScreen || !tidyTabs);
   const pinned = usePinnedSequence(windowId, profileId, offScreen);
   const pinnedSection = pinned.length > 0;
   const divided = clearable || tidy || pinnedSection;
@@ -83,7 +85,7 @@ export function PageRows({ windowId, profileId, current, rows, lazy, offScreen, 
           ref={(v) => {
             controller?.regions.set("pinnedGroups", v);
           }}
-          onLayout={geometry ? (e) => void (geometry.current.regions.pinnedGroups = e.nativeEvent.layout.y) : undefined}
+          onLayout={(e) => void (regions.pinnedGroups = e.nativeEvent.layout.y)}
           style={{ marginTop: tiles.length && pinnedSection ? space.s : 0, gap: pinnedGap }}
         >
           {pinnedSection ? (
@@ -101,7 +103,6 @@ export function PageRows({ windowId, profileId, current, rows, lazy, offScreen, 
           <ClearDivider
             windowId={windowId}
             profileId={profileId}
-            spaced={pinnedSection}
             lift={underDockedTiles && !pinnedSection && !isIncognitoProfile(profileId) ? DOCKED_TILES_GAP : 0}
             clear={clearable}
             tidy={tidy}
@@ -112,7 +113,7 @@ export function PageRows({ windowId, profileId, current, rows, lazy, offScreen, 
           ref={(v) => {
             controller?.regions.set("list", v);
           }}
-          onLayout={geometry ? (e) => void (geometry.current.regions.list = e.nativeEvent.layout.y) : undefined}
+          onLayout={(e) => void (regions.list = e.nativeEvent.layout.y)}
           style={{ gap: layout.rowGap }}
         >
           {newTabButtonAtTop && inlineNewTab ? <NewTabRow windowId={windowId} /> : null}

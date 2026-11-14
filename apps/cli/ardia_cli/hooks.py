@@ -3,7 +3,6 @@ import collections
 import hashlib
 import json
 import os
-import plistlib
 import signal
 import subprocess
 import sys
@@ -589,7 +588,12 @@ class HookRunner:
             try:
                 await asyncio.wait_for(self._feed(process, payload), self.hook.timeout)
                 status = await asyncio.wait_for(process.wait(), max(deadline - loop.time(), 0))
-                await asyncio.wait_for(asyncio.gather(*pumps), max(deadline - loop.time(), 0))
+                if pumps:
+                    _, pending = await asyncio.wait(pumps, timeout=max(deadline - loop.time(), 0))
+                    if pending:
+                        raise asyncio.TimeoutError
+                    for pump in pumps:
+                        pump.result()
             except asyncio.TimeoutError:
                 timed_out = True
                 status = await self._stop_group(process, pumps)
@@ -1033,9 +1037,9 @@ class AgentPaths:
 
 
 def agent_paths() -> AgentPaths:
-    home = Path.home()
-    cli_home = os.environ.get("ARDIA_CLI_HOME") or str(home / "Library" / "Application Support" / "Ardia" / "CLI")
-    return AgentPaths(home, Path(cli_home).expanduser())
+    from ardia_cli import usage
+
+    return AgentPaths(Path.home(), usage.cli_home())
 
 
 def agent_plist(paths: AgentPaths, path_env: str | None) -> dict:

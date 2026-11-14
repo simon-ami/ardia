@@ -13,25 +13,26 @@ final class WebKitTab: NSView, WKNavigationDelegate, WKUIDelegate {
   var initialURL: String?
   var adoptId: String?
   var transferKey: String?
-  var visible = true { didSet { updateHidden() } }
-  var warm = false { didSet { updateHidden() } }
+  var visible = true { didSet { updateHidden(); updateSight() } }
+  var autoPictureInPicture = false
   var pageBackgroundColor: NSColor? { didSet { if let color = pageBackgroundColor { webView?.underPageBackgroundColor = color } } }
   let browserId = WebKitHub.shared.nextBrowserId()
 
   private(set) var webView: WebKitWebView?
   private var observations: [NSKeyValueObservation] = []
   private var started = false
-  private var closed = false
+  private(set) var closed = false { didSet { if closed { stopWatchingSight() } } }
   private var navigationQueued = false
   private var mediaFrames: [String: WKFrameInfo] {
     get { webView?.mediaFrames ?? [:] }
     set { webView?.mediaFrames = newValue }
   }
-  private var playingFrames: Set<String> {
+  var playingFrames: Set<String> {
     get { webView?.playingFrames ?? [] }
     set { webView?.playingFrames = newValue }
   }
   private var muted = false
+  var sightObserver: NSObjectProtocol?
   private var errorURL: URL?
   private var committedAt: Double = 0
   private var respondedStatus = 0
@@ -40,6 +41,7 @@ final class WebKitTab: NSView, WKNavigationDelegate, WKUIDelegate {
   private var findText = ""
   private var findCount = 0
   private var findActive = 0
+  let blocked = WebKitBlockedCount()
 
   override var isFlipped: Bool { true }
 
@@ -48,7 +50,9 @@ final class WebKitTab: NSView, WKNavigationDelegate, WKUIDelegate {
     webView?.frame = bounds
   }
 
-  private func emit(_ name: String, _ payload: [String: Any] = [:]) {
+  override func viewDidMoveToWindow() { super.viewDidMoveToWindow(); watchSight() }
+
+  func emit(_ name: String, _ payload: [String: Any] = [:]) {
     delegate?.webKitTab(self, event: name, payload: payload)
   }
 
@@ -79,7 +83,7 @@ final class WebKitTab: NSView, WKNavigationDelegate, WKUIDelegate {
     let created = WebKitWebView(frame: bounds, configuration: WebKitHub.shared.configuration(profile: profile))
     attach(created)
     emit("ready", [:])
-    if let url = initialURL, !url.isEmpty { loadURL(url, userInitiated: false) }
+    if let url = initialURL, !url.isEmpty { loadWhenBlockerReady(url, in: created) }
   }
 
   func relinquish() -> WebKitWebView? {
@@ -121,6 +125,7 @@ final class WebKitTab: NSView, WKNavigationDelegate, WKUIDelegate {
     updateHidden()
     observe(view)
     WebKitHub.shared.permissions.reconcileCapture(view, profile: profile)
+    updateSight()
   }
 
   private func observe(_ view: WKWebView) {
@@ -142,7 +147,7 @@ final class WebKitTab: NSView, WKNavigationDelegate, WKUIDelegate {
   }
 
   private func updateHidden() {
-    webView?.isHidden = !(visible || warm)
+    webView?.isHidden = !visible
   }
 
   func close() {
@@ -248,7 +253,6 @@ final class WebKitTab: NSView, WKNavigationDelegate, WKUIDelegate {
   }
 
   private var muteScript: String { "window.__ardia && window.__ardia.mute(\(muted ? "true" : "false"))" }
-
 
   private func runInWorld(_ code: String, frame: WKFrameInfo? = nil, completion: ((Any?) -> Void)? = nil) {
     guard let view = webView else {
@@ -383,13 +387,13 @@ final class WebKitTab: NSView, WKNavigationDelegate, WKUIDelegate {
     runInWorld("window.__ardia && window.__ardia.media(\(Self.jsString(action)), \(seconds.isFinite ? seconds : 0))", frame: nowPlayingSubframe)
   }
 
-  func setPictureInPicture(_ on: Bool, completion: @escaping (Bool) -> Void) {
-    let code = "window.__ardia ? window.__ardia.pictureInPicture(\(on ? "true" : "false")) : false"
+  func setPictureInPicture(_ on: Bool, automatic: Bool = false, completion: @escaping (PictureInPictureAnswer) -> Void) {
+    let code = "window.__ardia ? window.__ardia.pictureInPicture(\(on ? "true" : "false"), \(automatic ? "true" : "false")) : false"
     if !on {
       for frame in mediaFrames.values where !frame.isMainFrame { runInWorld(code, frame: frame) }
     }
     runInWorld(code, frame: on ? nowPlayingSubframe : nil) { value in
-      completion((value as? NSNumber)?.boolValue ?? false)
+      completion(value as? String == "nothingPlaying" ? .nothingPlaying : (value as? NSNumber)?.boolValue == true ? .opened : .failed)
     }
   }
 
@@ -436,7 +440,9 @@ final class WebKitTab: NSView, WKNavigationDelegate, WKUIDelegate {
       if let dict, !dict.isEmpty { mediaFrames[frame] = frameInfo }
       emit("nowPlaying", ["state": view.nowPlaying.noteFrame(frame, page: data, main: main) ?? NSNull()])
     case "pip":
-      emit("pictureInPicture", ["kind": "video", "active": dict?["active"] as? Bool ?? false])
+      let active = dict?["active"] as? Bool ?? false
+      autoPictureInPictureRule.reported(active: active)
+      emit("pictureInPicture", ["kind": "video", "active": active])
     case "status":
       emit("status", ["text": data as? String ?? ""])
     case "icons":
@@ -449,12 +455,14 @@ final class WebKitTab: NSView, WKNavigationDelegate, WKUIDelegate {
     }
   }
 
-  func webView(_ webView: WKWebView, decidePolicyFor action: WKNavigationAction, decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
-    guard let url = action.request.url else { return decisionHandler(.allow) }
+  func webView(_ webView: WKWebView, decidePolicyFor action: WKNavigationAction, preferences: WKWebpagePreferences,
+               decisionHandler: @escaping (WKNavigationActionPolicy, WKWebpagePreferences) -> Void) {
+    let decide = { (policy: WKNavigationActionPolicy) in decisionHandler(policy, preferences) }
+    guard let url = action.request.url else { return decide(.allow) }
     let scheme = url.scheme?.lowercased() ?? ""
     let webSchemes: Set<String> = ["http", "https", "file", "about", "data", "blob", "javascript", "webkit-pdfjs-viewer"]
     if !webSchemes.contains(scheme) {
-      decisionHandler(.cancel)
+      decide(.cancel)
       let fromMainFrame = action.sourceFrame.isMainFrame || action.targetFrame?.isMainFrame == true
       guard action.navigationType == .linkActivated || fromMainFrame else { return }
       let source = action.sourceFrame.securityOrigin
@@ -465,13 +473,14 @@ final class WebKitTab: NSView, WKNavigationDelegate, WKUIDelegate {
     if action.navigationType == .linkActivated, action.targetFrame != nil {
       let flags = action.modifierFlags
       if flags.contains(.command) || action.buttonNumber == 2 {
-        decisionHandler(.cancel)
+        decide(.cancel)
         let disposition = flags.contains(.shift) ? "foreground" : "background"
         return emit("openWindow", ["url": url.absoluteString, "disposition": disposition, "userGesture": true])
       }
-      if flags.contains(.option) { return decisionHandler(.download) }
+      if flags.contains(.option) { return decide(.download) }
     }
-    decisionHandler(action.shouldPerformDownload ? .download : .allow)
+    if action.targetFrame?.isMainFrame == true, !applyBlockerPolicy(action, preferences: preferences, in: webView) { return decide(.cancel) }
+    decide(action.shouldPerformDownload ? .download : .allow)
   }
 
   func webView(_ webView: WKWebView, decidePolicyFor response: WKNavigationResponse, decisionHandler: @escaping (WKNavigationResponsePolicy) -> Void) {
@@ -521,6 +530,7 @@ final class WebKitTab: NSView, WKNavigationDelegate, WKUIDelegate {
 
   func webView(_ webView: WKWebView, didStartProvisionalNavigation navigation: WKNavigation!) {
     respondedStatus = 0
+    resetBlocked()
     if showingError && webView.url != errorURL { showingError = false }
     emit("status", ["text": ""])
   }
@@ -573,6 +583,7 @@ final class WebKitTab: NSView, WKNavigationDelegate, WKUIDelegate {
   func webView(_ webView: WKWebView, createWebViewWith configuration: WKWebViewConfiguration, for action: WKNavigationAction,
                windowFeatures: WKWindowFeatures) -> WKWebView? {
     let child = WebKitWebView(frame: .zero, configuration: configuration)
+    child.navigationDelegate = WebKitPopupPolicy.shared
     let id = WebKitHub.shared.transfers.offer(child)
     let flags = action.modifierFlags
     let popup = windowFeatures.width != nil || windowFeatures.height != nil
