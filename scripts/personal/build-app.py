@@ -49,14 +49,16 @@ def main():
         config = output / "Release.xcconfig"
         config.write_text(f'#include "{repo}/apps/browser/macos/AdHoc.xcconfig"\nARCHS = arm64\nONLY_ACTIVE_ARCH = YES\n')
         framework = os.environ.get("ARDIACORE_FRAMEWORK")
-        staged = subprocess.run(["git", "-C", str(repo), "diff", "--cached", "--quiet", "--", "engine"], check=False).returncode
+        key = repo / "engine/engine-key.sh"
+        key_paths = command(key, "--paths", capture_output=True, text=True).stdout.splitlines()
+        staged = subprocess.run(["git", "-C", str(repo), "diff", "--cached", "--quiet", "--", *key_paths], check=False).returncode
         if staged not in (0, 1):
             raise RuntimeError("Cannot inspect staged engine sources")
         engine_ref = command("git", "-C", repo, "write-tree", capture_output=True, text=True).stdout.strip() if staged else "HEAD"
         if not framework:
             fetch_args = [repo / "packages/ardiacore/scripts/fetch-engine.sh"] + (["--staged"] if staged else [])
             framework = command(*fetch_args, capture_output=True, text=True, timeout=180).stdout.strip()
-        engine = {"tree": command("git", "-C", repo, "rev-parse", f"{engine_ref}:engine", capture_output=True, text=True).stdout.strip(), "binary": file_digest(Path(framework) / "Versions/Current/Chromium Framework")}
+        engine = {"key": command(key, engine_ref, capture_output=True, text=True).stdout.strip(), "tree": command("git", "-C", repo, "rev-parse", f"{engine_ref}:engine", capture_output=True, text=True).stdout.strip(), "binary": file_digest(Path(framework) / "Versions/Current/Chromium Framework")}
         inputs = app_inputs(repo)
         source = repo / "apps/browser/build-personal/Build/Products/Release/Ardia.app"
         stamp = output / "unsigned-build.json"

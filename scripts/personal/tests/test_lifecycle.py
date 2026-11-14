@@ -53,6 +53,16 @@ class LifecycleTest(unittest.TestCase):
         tracked.unlink()
         self.assertNotEqual(lifecycle.app_inputs(self.repo), before)
 
+    def test_shipped_skill_edits_invalidate_the_cli(self):
+        skill = "apps/cli/ardia_cli/skill/SKILL.md"
+        self.put(skill, "old command")
+        before = lifecycle.cli_inputs(self.repo)
+        self.put(skill, "ardia-personal browse")
+        self.assertNotEqual(lifecycle.cli_inputs(self.repo), before)
+        before = lifecycle.cli_inputs(self.repo)
+        self.put("apps/cli/ardia_cli/skill/references/script.md", "new API")
+        self.assertNotEqual(lifecycle.cli_inputs(self.repo), before)
+
     def test_sign_only_rejects_modified_program_files(self):
         self.put("apps/browser/index.js", "source")
         app = self.root / "app"

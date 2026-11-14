@@ -87,6 +87,17 @@ NS_ASSUME_NONNULL_BEGIN
                                browser:(int)browserId NS_SWIFT_NAME(devScrollZoom(_:browserId:));
 @end
 
+@interface ArdiaWebView (Recording)
+- (void)copyRecordingPicture:(void (^)(CGImageRef _Nullable picture))completion NS_SWIFT_NAME(copyRecordingPicture(_:));
+@property (nonatomic, readonly) BOOL recordingShowsPage;
++ (NSArray<NSWindow *> *)recordingPictureInPictureWindowsOfWindow:(NSWindow *)window NS_SWIFT_NAME(recordingPictureInPictureWindows(of:));
++ (BOOL)recordingWindowIsPrivate:(NSWindow *)window NS_SWIFT_NAME(recordingWindowIsPrivate(_:));
++ (CGFloat)recordingCornerRadiusOfWindow:(NSWindow *)window NS_SWIFT_NAME(recordingCornerRadius(of:));
++ (nullable NSView *)recordingControlsOfWindow:(NSWindow *)window NS_SWIFT_NAME(recordingControls(of:));
++ (void)copyRecordingPictureOfWindow:(NSWindow *)window
+                          completion:(void (^)(CGImageRef _Nullable picture))completion NS_SWIFT_NAME(copyRecordingPicture(of:_:));
+@end
+
 @interface ArdiaWebView (PageMessages)
 + (void)setDisplayMediaPicker:(BOOL)enabled;
 + (void)setSelectionPopoverEnabled:(BOOL)enabled NS_SWIFT_NAME(setSelectionPopoverEnabled(_:));

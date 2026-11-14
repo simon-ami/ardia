@@ -30,6 +30,9 @@ For copies, name what stays shared and what becomes independent.
 2. Compare the target with the fork and active feature requirements. Check relevant upstream code and PRs
    for merged or alternative implementations. Search by behavior, not only titles.
    Untouched code and unrelated PRs do not require exhaustive rereading.
+   Prefer upstream when it provides the same value or more. For partial coverage, use upstream as the base
+   and adapt only the missing behavior or styling when practical. Prepare that variant for Simon to test
+   before finalizing replacements or retiring custom features.
 3. Merge on an update branch. Keep newer fork commits. Resolve mechanical conflicts yourself.
    Ask when a conflict changes intended behavior. Ask before removing custom code, even if upstream replaces it.
 4. Follow the checks and delivery rules below. No new release means report that no update is needed.
@@ -161,10 +164,12 @@ Snapshots and the original migration backup stay private and out of Git. Do not 
 
 Preserve README fork notice `2286d63b`, PR CI workflow `84beb05f`, and the personal-build feature record.
 Starting point after setup: fork `main` at `9d18a24e`.
-The installed update targets `v0.2.45-nightly.3`, commit `ec41f6d944572ccefcfc38a331a6626b5d913dbe`.
-The recorded candidate and installed app match its sources and engine `6b163791fd94422f4152a212f9fcc1ba5d597e0a`;
-the paired CLI is `0.2.45-personal.1`. Simon confirmed login persistence, profiles/settings, scripts,
-Control-Tab previews, and manual unloading passed on 2026-11-13. Custom features remain.
-Private build and installation evidence is in update record `20261108-161526-38503730`.
+The installed update targets `v0.2.47-nightly.1`, commit `eea5edb931644dc903bb9118bc8aff52ea6a97a7`.
+The recorded candidate and installed app match current sources; the paired CLI is `0.2.47-personal.1`.
+Simon confirmed the requested manual checks passed, including the adapted upstream switcher, sleeping-tab
+filter, close/unload successors, split panes, and login/settings/script persistence. Use upstream behavior
+with the remaining personal layout and eligibility adaptations. Custom features remain active.
+Private build, installation, checks, and final merge evidence is in
+`apps/browser/build-personal-signed/update-0.2.47-nightly.1/` and update snapshot `20261114-003508-96a0487b`.
 For each update, record its target, candidate, checks, manual result, replacement choices, installed build,
 and final merge. Keep per-feature details in their separate ledger files.

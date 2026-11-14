@@ -27,6 +27,7 @@
       "AppModule",
       "UpdaterModule",
       "NotificationsModule",
+      "LocationModule",
       "ScriptingModule",
       "DevModule",
       "CalendarModule",
@@ -39,7 +40,9 @@
       "UserScriptsModule",
       "ConfigModule",
       "AutomationModule",
-      "SystemSignalsModule"
+      "SystemSignalsModule",
+      "ReportModule",
+      "TelemetryLocalModule"
     ]
   }
 }

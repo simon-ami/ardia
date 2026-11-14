@@ -4,7 +4,7 @@ import { useTheme } from "../../ui/theme";
 import { useSettings, useTabLayout } from "../../../state/browser/hooks";
 import { chooseSidebarSide, chooseTabLayout, updateSettings } from "../../../state/settings/actions";
 import { splitLinkModifierOf, type PeekModifier, type Settings, type SplitLinkModifier } from "../../../state/settings/settings";
-import { Box, Button, Checkbox, DialogActions, DialogTitle, PopUp, Segmented, Sheet, space, Text, TextField, type Option, type SegmentOption } from "../../ui";
+import { Box, Button, Checkbox, DialogActions, DialogTitle, PopUp, Segmented, Sheet, space, Text, TextField, Toggle, type Option, type SegmentOption } from "../../ui";
 import { durationMinutes, durationParts, type DurationUnit } from "../../../lib/time";
 import { cleanUpChoices, CUSTOM_CLEAN_UP, DAILY_CLEAN_UP_MINUTES } from "../../../state/settings/cleanUpAfter";
 import { closeSettingsSheet, showSettingsSheet } from "../../../state/settings/sheet";
@@ -100,13 +100,20 @@ export function TabsPane() {
           <LayoutChoice layout="top" title="Tab layout across the top of the window" selected={top} />
         </Box>
         <Group>
+          <SettingToggle
+            anchor="tabs.autoHideTabs"
+            description={`In every window, the tabs slide out of view and come back when you move the pointer to the window's ${top ? "top edge" : "edge"}. Changing it here resets every window; ⌘S and View › Auto-Hide Tabs hide or show the tabs in one window only.`}
+          />
         <Row anchor="tabs.sidebarSide">
           <Segmented options={SIDEBAR_SIDES} value={sidebarSide} onChange={chooseSidebarSide} />
         </Row>
         <SettingToggle anchor="tabs.hideToolbarWhileScrolling" />
         <SettingToggle anchor="tabs.showSidebarButton" />
         <SettingToggle anchor="tabs.showClearButton" />
+        <SettingToggle anchor="tabs.tidyTabs" />
         <SettingToggle anchor="tabs.balancedTopApps" />
+        <SettingToggle anchor="tabs.showUnreadCounts" />
+        <SettingToggle anchor="tabs.showTopAppBadges" />
         </Group>
       </Box>
 
@@ -130,12 +137,14 @@ export function TabsPane() {
             minWidth={160}
           />
         </Row>
+        <SettingToggle anchor="tabs.reuseEmptyNewTab" />
         <Row anchor="tabs.newTabPosition">
           <PopUp value={newTabPosition} options={top ? NEW_TABS_ACROSS : NEW_TABS_DOWN} onChange={(v) => updateSettings({ newTabPosition: v })} minWidth={190} />
         </Row>
         <Row anchor="tabs.newTabButtonPosition">
           <PopUp value={newTabButtonPosition} options={NEW_TAB_BUTTON} onChange={(v) => updateSettings({ newTabButtonPosition: v })} minWidth={190} />
         </Row>
+        <SettingToggle anchor="tabs.appLinksFirst" />
         <SettingToggle anchor="tabs.shareTabsAcrossWindows" />
         <SettingToggle anchor="tabs.sleepingTabsInSwitcher" />
         <SettingToggle anchor="tabs.warnBeforeClosingLastTab" />
@@ -179,6 +188,7 @@ function CleanUpRow({ minutes }: { minutes: number | null }) {
           onChange={(v) => (v === CUSTOM_CLEAN_UP ? showSettingsSheet(<CustomCleanUpSheet minutes={shown} />) : updateSettings({ cleanUpInactiveTabsAfterMinutes: Number(v) }))}
         />
       </Row>
+      <SettingToggle anchor="tabs.suggestCleanUp" />
     </Group>
   );
 }

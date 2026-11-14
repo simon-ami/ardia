@@ -1,10 +1,11 @@
 import { useBrowser, type BrowserState } from "../browser/store";
 import { useTab } from "../browser/hooks";
+import { useKeyed } from "../browser/keyedWatch";
+import { watchTabState } from "../tabs/tabStateWatch";
 import { activeTabId } from "../browser/model";
 import type { Tab } from "../browser/types";
 import { engineMark, type PageEngine } from "../engines/engines";
 import { isPageUnloaded } from "../pins/pinShare";
-import { useBrowserWhile } from "../tabs/tabWatch";
 import { useIsSleeping } from "../tabs/sleepingTabs";
 import { muteState, type MuteState } from "../tabs/mute";
 
@@ -30,7 +31,7 @@ export const markedEngine = (marks: number): PageEngine | null =>
   marks & ENGINE_MARKS.webkit ? "webkit" : marks & ENGINE_MARKS.chromium ? "chromium" : null;
 
 export const useIconMarks = (tabId: string | undefined, given: number | undefined): number =>
-  useBrowserWhile(given === undefined && !!tabId, (s) => given ?? (tabId ? iconMarks(s, tabId) : 0));
+  useKeyed(watchTabState, given === undefined ? tabId : null, () => given ?? (tabId ? iconMarks(useBrowser.getState(), tabId) : 0));
 
 export function useGrayscaleTabIcon(tabId: string): boolean {
   const sleeping = useIsSleeping(tabId);
@@ -42,7 +43,7 @@ export function useFadeTabTitle(tabId: string): boolean {
   return useBrowser((s) => s.settings.fadeUnloadedTabTitles && (sleeping || isPageUnloaded(s, tabId)));
 }
 
-function rowFlags(s: BrowserState, windowId: string, tabId: string): number {
+export function rowFlags(s: BrowserState, windowId: string, tabId: string): number {
   const tab = s.tabs[tabId];
   const live = s.live[tabId];
   let flags = iconMarks(s, tabId);
@@ -57,6 +58,6 @@ function rowFlags(s: BrowserState, windowId: string, tabId: string): number {
 
 export function useRowState(tabId: string, windowId: string): { tab: Tab | undefined; flags: number } {
   const tab = useTab(tabId);
-  const flags = useBrowser((s) => rowFlags(s, windowId, tabId));
+  const flags = useKeyed(watchTabState, tabId, () => rowFlags(useBrowser.getState(), windowId, tabId));
   return { tab, flags };
 }

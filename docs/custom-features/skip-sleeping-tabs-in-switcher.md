@@ -1,6 +1,7 @@
 # Exclude sleeping tabs from the MRU switcher
 
-- Status: active; manually checked with native unloading. Chrome automatic discard is not separately verified.
+- Status: active; native unloading and adapted upstream behavior passed automated and manual checks.
+  Chrome automatic discard is not separately verified.
 - Source: [upstream PR #612](https://github.com/mantrakp04/ardia/pull/612), `posthog-eu[bot]`,
   head `5c28393aceff9f08c9a1ca3713bdbe0d720b0b88`.
 - Setting: Tabs → Show sleeping tabs in the tab switcher (`sleepingTabsInSwitcher`), synced, default on.
@@ -12,3 +13,5 @@
   and settings search under `apps/browser/src`.
 - Manual: unload a tab; toggle the setting and check its card disappears/returns. Check selection and persistence
   after restart. The separate [Auto Tab Discard limitation](manual-tab-unloading.md) remains open.
+- Replacement: upstream `v0.2.47-nightly.1` always hides sleeping pages. The fork uses its ordering and live
+  updates with one shared eligibility check that retains this toggle, including selection on release.

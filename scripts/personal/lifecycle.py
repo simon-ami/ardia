@@ -33,13 +33,13 @@ def file_digest(path):
         return hashlib.file_digest(stream, "sha256").hexdigest()
 
 
-def inputs_digest(repo, paths):
+def inputs_digest(repo, paths, include_docs=False):
     names = run("git", "-C", repo, "ls-files", "-co", "--exclude-standard", "-z", "--", *paths, capture_output=True).stdout.split(b"\0")
     digest = hashlib.sha256()
     for raw in sorted(set(names) - {b""}):
         name = os.fsdecode(raw)
         path = repo / name
-        if "__pycache__" in path.parts or ".test." in name or name.endswith(".md"):
+        if "__pycache__" in path.parts or ".test." in name or (name.endswith(".md") and not include_docs):
             continue
         if path.is_symlink():
             content = b"link\0" + os.fsencode(os.readlink(path))
@@ -58,7 +58,7 @@ def app_inputs(repo):
 
 
 def cli_inputs(repo):
-    return inputs_digest(repo, ["apps/cli/ardia_cli", "apps/cli/scripts/build.sh", "apps/cli/requirements.lock", "apps/cli/pyproject.toml", "scripts/personal/prepare-cli.py", "scripts/personal/lifecycle.py"])
+    return inputs_digest(repo, ["apps/cli/ardia_cli", "apps/cli/scripts/build.sh", "apps/cli/requirements.lock", "apps/cli/pyproject.toml", "scripts/personal/prepare-cli.py", "scripts/personal/lifecycle.py"], include_docs=True)
 
 
 def artifact(app):

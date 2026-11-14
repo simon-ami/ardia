@@ -14,6 +14,8 @@ import type {
   WindowEvent,
 } from "@ardia/shell";
 import { nativeEvents, unfaked } from "./events";
+import { reportModule } from "./report";
+import { telemetryLocalModule } from "./telemetryLocal";
 
 type Modules = ShellNativeModules;
 
@@ -72,6 +74,7 @@ const shell: Modules["ArdiaShell"] = {
 };
 
 const windowsModule: Modules["ArdiaAppWindows"] = {
+  windowCornerRadius: () => 19,
   addListener: shellEvents.addListener,
   openWindow: (id, options) => {
     windows.open.set(id, { ...options });
@@ -113,6 +116,9 @@ const windowsModule: Modules["ArdiaAppWindows"] = {
   replyToTerminate: () => Promise.resolve(),
 };
 
+export const pressesWithoutRelease = { count: 0 };
+export const pressRepeated: { earlier: { landedOn: string; ms: number } | null } = { earlier: null };
+
 const focus: Modules["ArdiaFocus"] = {
   setSwitcherCapture: () => Promise.resolve(),
   setDragEscapeCapture: () => Promise.resolve(),
@@ -122,6 +128,8 @@ const focus: Modules["ArdiaFocus"] = {
   switcherPointerMoved: () => true,
   cancelFocusMove: () => Promise.resolve(),
   claimFocus: () => Promise.resolve(),
+  pressesWithoutRelease: () => pressesWithoutRelease.count,
+  pressRepeated: () => Promise.resolve(pressRepeated.earlier),
 };
 
 const menus: Modules["ArdiaMenus"] = {
@@ -193,6 +201,13 @@ const notifications: Modules["ArdiaNotifications"] = {
   openNotificationSettings: () => Promise.resolve(),
 };
 
+const location: Modules["ArdiaLocation"] = {
+  locationPermission: () => Promise.resolve("notDetermined"),
+  requestLocationPermission: () => Promise.resolve("notDetermined"),
+  openLocationSettings: () => Promise.resolve(),
+  devLocationRequests: () => Promise.resolve(0),
+};
+
 const scriptingEvents = nativeEvents();
 const scripting: Modules["ArdiaScripting"] = {
   addListener: scriptingEvents.addListener,
@@ -239,7 +254,7 @@ const calendarEvents = nativeEvents();
 const calendar: Modules["ArdiaCalendar"] = {
   addListener: calendarEvents.addListener,
   authorizationStatus: () => "notDetermined",
-  requestAccess: () => Promise.resolve(false),
+  requestAccess: () => Promise.resolve({ granted: false, status: "notDetermined", error: null, responsible: "self", ms: 0 }),
   calendars: () => Promise.resolve([]),
   events: () => Promise.resolve([]),
 };
@@ -260,6 +275,8 @@ const translate: Modules["ArdiaTranslate"] = {
   prepare: () => Promise.resolve(),
   translate: (_source, _target, texts) => Promise.resolve(texts),
   translateBlocks: (_source, _target, blocks) => Promise.resolve(blocks),
+  open: () => Promise.resolve(),
+  cancel: () => Promise.resolve(),
 };
 
 const magnifyArea: Modules["ArdiaMagnifyArea"] = { devMagnify: () => unfaked("ArdiaMagnifyArea", "devMagnify") };
@@ -376,6 +393,7 @@ export const shellNativeModules: Modules = {
   ArdiaApp: app,
   ArdiaUpdater: updater,
   ArdiaNotifications: notifications,
+  ArdiaLocation: location,
   ArdiaScripting: scripting,
   ArdiaDev: dev,
   ArdiaSystem: system,
@@ -392,4 +410,6 @@ export const shellNativeModules: Modules = {
   ArdiaConfig: config,
   ArdiaAutomation: automation,
   ArdiaSystemSignals: systemSignalsModule,
+  ArdiaTelemetryLocal: telemetryLocalModule,
+  ArdiaReport: reportModule,
 };

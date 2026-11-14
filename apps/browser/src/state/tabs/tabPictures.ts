@@ -1,4 +1,3 @@
-import { useSyncExternalStore } from "react";
 import { useBrowser } from "../browser/store";
 import { isIncognitoProfile } from "../browser/model";
 import { webviews } from "../../platform/webviews";
@@ -9,15 +8,14 @@ const SETTLE_MS = 1500;
 const KEEP = 40;
 const pictures = new Map<string, Picture>();
 const timers = new Map<string, ReturnType<typeof setTimeout>>();
-let started = false;
-
 const listeners = new Set<() => void>();
+let started = false;
 
 export function lastPicture(tabId: string): Picture | null {
   return pictures.get(tabId) ?? null;
 }
 
-function onPicturesChanged(listener: () => void): () => void {
+export function onPicturesChanged(listener: () => void): () => void {
   listeners.add(listener);
   return () => void listeners.delete(listener);
 }
@@ -26,17 +24,14 @@ function changed() {
   for (const listener of listeners) listener();
 }
 
-export function useTabPicture(tabId: string): Picture | null {
-  return useSyncExternalStore(onPicturesChanged, () => lastPicture(tabId));
-}
-
 export function rememberPicture(tabId: string): Promise<void> {
   return remember(tabId);
 }
 
 function remember(tabId: string): Promise<void> {
-  const tab = useBrowser.getState().tabs[tabId];
-  if (!tab || isIncognitoProfile(tab.profileId) || useBrowser.getState().windows[tab.windowId]?.kind === "private") return Promise.resolve();
+  const state = useBrowser.getState();
+  const tab = state.tabs[tabId];
+  if (!tab || state.windows[tab.windowId]?.kind === "private" || isIncognitoProfile(tab.profileId)) return Promise.resolve();
   const view = webviews.get(tabId);
   if (!view) return Promise.resolve();
   return view

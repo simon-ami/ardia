@@ -13,6 +13,11 @@ test("staged engine lookup uses the merge tree and refuses unmatched working fil
     mkdirSync(scripts, { recursive: true });
     mkdirSync(join(root, "engine"));
     copyFileSync(new URL("../../packages/ardiacore/scripts/fetch-engine.sh", import.meta.url), join(scripts, "fetch-engine.sh"));
+    copyFileSync(new URL("../../engine/engine-key.sh", import.meta.url), join(root, "engine/engine-key.sh"));
+    for (const name of ["offline-game", "offline-game-pipeline"]) {
+      mkdirSync(join(root, "apps/browser/assets", name), { recursive: true });
+      writeFileSync(join(root, "apps/browser/assets", name, "source"), "fixture");
+    }
     git("init", "-q");
     git("config", "user.name", "Fixture");
     git("config", "user.email", "fixture@example.invalid");
@@ -21,7 +26,7 @@ test("staged engine lookup uses the merge tree and refuses unmatched working fil
     git("commit", "-qm", "Fixture");
     writeFileSync(join(root, "engine/source"), "new");
     git("add", "engine");
-    const tree = git("rev-parse", `${git("write-tree")}:engine`);
+    const tree = execFileSync("bash", [join(root, "engine/engine-key.sh"), git("write-tree")], { encoding: "utf8" }).trim();
     const cached = join(root, "apps/browser/build-ardiacore/prebuilt", tree.slice(0, 12));
     mkdirSync(cached, { recursive: true });
     writeFileSync(join(cached, ".complete"), "");

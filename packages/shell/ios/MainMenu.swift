@@ -335,14 +335,13 @@ enum MainMenu {
 
   private static func helpItems() -> [NSMenuItem] {
     var items: [NSMenuItem] = [
-      CommandItem(.sendFeedback),
+      CommandItem(.reportProblem),
       CommandItem(.keyboardShortcuts),
       CommandItem(.toolTour),
       videoTourItem(),
       releaseNotesItem(),
       .separator(),
       CommandItem(.copyDiagnostics),
-      CommandItem(.recordPerformanceIssue),
     ]
     #if DEBUG
     items += [.separator(), CommandItem(.showOnboarding)]
