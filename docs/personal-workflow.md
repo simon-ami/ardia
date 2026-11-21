@@ -157,6 +157,9 @@ Check for new workflows after each upstream merge with `gh workflow list --all -
 Prepare a fork integration PR for protected `main`. For a useful new product change, also prepare a focused
 upstream contribution. Exclude personal tooling, branding, workflow files, and sync merges from upstream PRs.
 Before publication, show the destination, scope, checks, and draft title and description. Ask once.
+For fork PRs, pass `simon-ami/ardia` explicitly as the target repository and verify the base branch.
+Use a PR creation tool that accepts the repository. T3's `pull_request_create` infers the repository
+and can choose `upstream` even after pushing to `origin`.
 For the fork, include push, PR creation, and merge in one approval request.
 If an upstream issue is required, include its draft in that approval. Fork issues are currently disabled.
 Monitor checks through T3 when merging is pending. Do not call an update integrated until the PR is merged.
