@@ -127,23 +127,17 @@ rg -l --hidden --no-ignore -L -i 'ardia(-personal)?' \
   ~/.config/opencode/skills(N) ~/.cursor/skills(N) ~/.gemini/skills(N) -g SKILL.md
 ```
 
-Also inspect project skill directories and paths recorded in `$ARDIA_CLI_HOME/skills.json`
-(default: `~/Library/Application Support/Ardia/CLI/skills.json`). Resolve shared symlinks once.
-Compare each skill and its references with the bundle shipped by the installed personal CLI.
-Check against candidate sources during preparation; refresh only after activating that CLI.
-If the bundle changed, use `ardia-personal skills refresh` where that version supports it.
-It updates marked copies and can update or install its managed `cua-driver` companion; review its output.
-Unmarked copies are skipped. Inspect and back them up before migrating with `skills install`;
-preserve local edits and never use `--replace` blindly. Do not install into unused agents.
-Preserve the fork's skill customization in `apps/cli/ardia_cli/skill/`, including all references:
-CLI invocations, shell strings, the description, and `allowed-tools` must use `ardia-personal`.
-Keep skill name `ardia`, paths, environment variables, identifiers, and literal app labels unchanged.
-During upstream merges, inspect new examples and conflicts; never restore the official command by accepting
-upstream wholesale. Use `ardia` only when Simon explicitly requests the official browser.
-Older personal CLI bundles can still ship upstream wording. After refresh or reinstall, apply these same
-command substitutions to installed copies without copying newer command documentation into an older CLI.
-Compare installed files with the activated bundle plus these substitutions and report any other differences.
-Verify each consuming agent also has the personal-command instruction.
+The personal build fetches the macOS CLI artifact pinned in `apps/browser/official-plugins.json`,
+checks its SHA-256, and applies the isolation changes in `scripts/personal/prepare-cli.py`.
+For each pin change, check the upstream launcher, profile and endpoint selection, Keychain service,
+CLI state, helper installation paths, and bundled skill examples. A missing artifact or changed
+isolation patch blocks activation. Keep the app and CLI paired through the signed build record.
+
+Inspect project skill directories and the records under `~/Library/Application Support/Ardia Personal/CLI`.
+Compare installed skills with the prepared personal bundle before activation. After activation, update
+only the installed personal copies. Back up local changes and preserve them. Review companion changes
+before using `skills refresh`, which can also update the Cua Driver skill.
+Keep the skill name `ardia` and use `ardia-personal` in command examples and tool permissions.
 
 ## Fork CI
 
@@ -177,16 +171,14 @@ Snapshots and the original migration backup stay private and out of Git. Do not 
 
 Preserve README fork notice `2286d63b`, PR CI workflow `84beb05f`, and the personal-build feature record.
 Starting point after setup: fork `main` at `9d18a24e`.
-The installed update targets `v0.2.47-nightly.5`, commit `f6636c47bd20ac2c86d82f5b54898498594b0512`.
-Candidate and installed records match current sources; the paired CLI is `0.2.47-personal.1`.
-All custom features remain active. Upstream strikethrough partially overlaps title fading; Simon confirmed
-that the fork should retain fade-only alongside upstream strikethrough. Unreleased upstream Sleep Tab and cross-space extension recovery are documented in the ledger,
-not imported. No replacement or custom-code removal is approved.
-Workspace typechecks, package tests, personal lifecycle tests, and focused custom-feature tests pass.
-The browser suite's four initial failures were corrected and rechecked. The CLI suite passed except one
-personal-skill length assertion; shortening the text and rerunning its 52 tests passed.
-Hidden signed-candidate checks cover MRU selection, close/unload successors, switcher row closing,
-sleeping filtering, settings persistence, and no background startup warmup after 15 seconds.
-Simon confirmed all requested manual checks passed.
-Evidence: `apps/browser/build-personal-signed/update-0.2.47-nightly.5/`.
-Installation snapshot: `20261117-182424-c196d008`. The managed Ardia skill matches the activated CLI bundle.
+The installed update targets `v0.2.47-nightly.9`, commit `c37a870640a8ce5c569322535f9fbf82fcaecaa0`.
+The signed app uses Chromium `158.0.8127.36`, engine key `367b6b04ea642e1afcb73365abd2f895fba1c7be`.
+The paired CLI and managed skill use upstream `0.4.0` through `ardia-personal`. All eight custom features remain active.
+CLI checks passed for the personal config path, `windows`, `methods`, and installation.
+The CLI update snapshot is `20261121-121454-e15e7d1e`.
+Typechecks, 145 focused browser checks, and hidden candidate checks passed. The candidate exercised native unloading,
+MRU selection, switcher closing and sleeping filtering, settings restoration, lazy startup, and the personal CLI socket.
+The Linux host suite still records its upstream Picture in Picture consent TODO. The native plugin responsibility test
+passed from scratch after macOS denied its disclaimed subprocess access to the checkout under Documents.
+Installation snapshot: `20261120-233540-0fe4a2e4`. Evidence: `apps/browser/build-personal-signed/update-0.2.47-nightly.9/`.
+Simon confirmed restored tabs, an existing login, Control-Tab previews, and Unload Tab with reload on selection.
