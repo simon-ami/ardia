@@ -6,9 +6,9 @@ Release builds and starts without Metro. The personal build wrapper creates a se
 bundle ID `dev.simon.ardia.personal`. Its updater feed is removed. It registers HTTP and HTTPS support;
 it does not register file or document handlers. The app is installed at `~/Applications/Ardia Personal.app`.
 The personal build supports the shared `Ardia Safe Storage` keychain item.
-Its signing and storage checks are described below. Simon reported the fresh-profile login test passed:
+Its signing and storage checks are described below. The user reported the fresh-profile login test passed:
 the website remained signed in after quitting and reopening the personal app. Data has since been copied;
-Simon reports tabs, settings, spaces/profiles, existing logins, Bitwarden, and scripts work in spot checks.
+the user reports tabs, settings, spaces/profiles, existing logins, Bitwarden, and scripts work in spot checks.
 
 The personal app uses `~/Library/Application Support/dev.simon.ardia.personal` for its own data.
 Its Chromium profiles are in `Chromium`; its editable configuration is in `config`.
@@ -67,7 +67,7 @@ If locked, obtain its password through the private secret tool and pass the retu
 Never put the password in arguments, logs, Git, or a persistent script. The wrapper locks the keychain after signing.
 This unlocks only the signing identity; it does not unlock website passwords or cookies.
 
-The encrypted `.p12` backup and its Base64 text are in the same Signing folder. Simon saved the Base64 text
+The encrypted `.p12` backup and its Base64 text are in the same Signing folder. The user saved the Base64 text
 in a Bitwarden Secure Note and the export password in a separate linked login item. Backup restoration and
 signing a changed test binary with the same identity were verified. Do not regenerate the identity for normal builds.
 
@@ -90,14 +90,14 @@ Retain the official installation and original profile until migration and rollba
 
 ## Shared Safe Storage
 
-Simon chose the existing `Ardia Safe Storage` item on 2026-11-06. No Chromium rebuild is needed.
+The user chose the existing `Ardia Safe Storage` item on 2026-11-06. No Chromium rebuild is needed.
 The signed personal bundle records the certificate fingerprint and this storage choice. Before using a real
 profile, the app checks its running code against that certificate and the personal signing identifier.
 It also checks the app's sealed files on disk.
 Missing or invalid personal signing configuration stops startup. Scratch profiles keep the mock keychain.
 Ordinary ad hoc builds also keep the mock keychain. The real-profile debugging restrictions remain active.
 
-The first real start can show a macOS request to use `Ardia Safe Storage`. Simon must approve it himself;
+The first real start can show a macOS request to use `Ardia Safe Storage`. The user must approve it directly;
 the setup does not change the existing item's access list. The macOS dialog can request the Mac login password,
 not the signing-backup password. Choose Always Allow only for this personal app when offered.
 Cancel and report any different request.
@@ -109,20 +109,21 @@ back up this separate cookie-encryption key.
 
 Before copying real data, manually start the personal Release app with a fresh personal profile. Confirm any
 expected Safe Storage prompt. Test a disposable website login, quit, reopen, and confirm that it remains signed in.
-Do not copy the official profile for this test. Simon confirmed this test passed on 2026-11-06.
+Do not copy the official profile for this test. The user confirmed this test passed on 2026-11-06.
 
 ## Personal CLI
 
-The app build runs `prepare-cli.py --prepare-only`. It builds a separate runtime
-from this checkout in `apps/browser/build-personal-cli` and verifies its archive.
-Preparation does not switch `current`; the app installer activates the CLI recorded in the signed candidate.
-Unchanged sources and version reuse the archive. Version metadata comes from the app project rather than a
-fixed version in the script. Runtime content is checked before activation. Old runtimes remain available.
+The app build runs `prepare-cli.py --prepare-only`. It verifies the pinned macOS Command Line plugin
+archive and prepares an isolated CLI runtime in `apps/browser/build-personal-cli`. Preparation
+leaves `current` in place. The Personal signing step removes the legacy CLI installer from the app bundle. The app installer activates the runtime recorded in the signed candidate.
+The runtime uses the personal profile, Keychain service, and CLI state. Its managed helper uses
+personal installation paths. Old runtimes remain available for rollback.
+
 For a deliberately separate CLI update, `prepare-cli.py` activates its prepared runtime; `--install` also adds
 `~/.local/bin/ardia-personal`. It does not change `ardia` or the shell configuration.
 Keep this checkout at its current location while using that symlink.
-Simon's global `~/.codex/AGENTS.md` directs browser automation to use `ardia-personal` wherever the Ardia skill
-says `ardia`. The fork's skill and references also use `ardia-personal` for CLI invocations and tool permissions.
+The user's global `~/.codex/AGENTS.md` directs browser automation to use `ardia-personal` wherever the Ardia skill
+says `ardia`. The prepared skill and references also use `ardia-personal` for CLI invocations and tool permissions.
 Keep skill name `ardia`, paths, environment variables, and literal app labels unchanged. Preserve these
 substitutions during upstream merges and installed skill refreshes; see [the workflow](personal-workflow.md#installed-agent-skills).
 Use the official command only on an explicit request.
@@ -155,7 +156,7 @@ schemas were 9. Cloud sync was disabled. No linked shared folders were found.
   Copied appearance and window preferences; retained the personal updater preferences.
 - The four script source files remain shared at their existing location. Installed scripts, extension settings,
   cookies, history, and tabs are separate copies from this point forward. Later edits do not propagate.
-- Manual validation: Simon reports tabs, settings, spaces/profiles, existing logins, Bitwarden, and scripts
+- Manual validation: the user reports tabs, settings, spaces/profiles, existing logins, Bitwarden, and scripts
   work in spot checks. Script execution counts were not measured separately. The extension path cleanup
   also passed 25 nearby automated checks, typecheck, a Release build, and a hidden launch.
 

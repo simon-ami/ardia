@@ -1,3 +1,6 @@
+import { changedIds } from "../browser/changes";
+import { onLiveChange } from "../tabs/tabLive";
+import type { Tab } from "../browser/types";
 import { create } from "zustand";
 import { getHiddenElements, hideElements, restoreElements } from "../../platform/contentBlocker";
 import { useBrowser, type BrowserState } from "../browser/store";
@@ -14,9 +17,11 @@ import {
   noteElementPickerFromContextMenu,
   noteHiddenElementsRestored,
   noteHiddenElementWriteFailure,
+  notePickedSelectorEscaped,
 } from "../telemetry/hiddenElementCounts";
+import { consentToken } from "../telemetry/client";
 
-const HIDING_RULE = /^[a-z0-9.-]+##[^+^\s][^\n{}]*$/;
+const HIDING_RULE = /^[a-z0-9.-]+##(?![+^\s])(?!.*\/\*)[^\0-\x1f\x7f\x85\u2028\u2029{}]+$/;
 const MAX_FILTER = 1024;
 
 export type HiddenElement = { filter: string; host: string; selector: string; session: boolean };
@@ -39,6 +44,16 @@ export function hidingFilter(host: string, selector: string): string | null {
   return filter.length <= MAX_FILTER && HIDING_RULE.test(filter) ? filter : null;
 }
 
+const PICKED_ATTRIBUTE = /\[(data-testid|data-test-id|data-test|data-qa|data-component|data-module)="([^"\\]*)"\]/g;
+const CSS_LINE_BREAK = /[\r\n\f]/;
+const ESCAPED_IN_ATTRIBUTE = /[\x01-\x1f\x7f\x85\u2028\u2029{}]|(?<=\/)\*/g;
+const cssEscape = (c: string) => `\\${c.charCodeAt(0).toString(16)} `;
+
+export function savablePickedSelector(selector: string): string | null {
+  if (CSS_LINE_BREAK.test(selector)) return null;
+  return selector.replace(PICKED_ATTRIBUTE, (_, name: string, value: string) => `[${name}="${value.replace(ESCAPED_IN_ATTRIBUTE, cssEscape)}"]`);
+}
+
 export function parseHidingFilter(filter: string, session = false): HiddenElement | null {
   if (!HIDING_RULE.test(filter)) return null;
   const at = filter.indexOf("##");
@@ -59,7 +74,7 @@ const changed = () => useHiddenElements.setState((s) => ({ changes: s.changes + 
 const privateWindowOf = (profile: string) => (isIncognitoProfile(profile) ? profile.slice("incognito:".length, profile.indexOf("@")) : null);
 
 export function startHiddenElements() {
-  return useBrowser.subscribe((s, prev) => {
+  return useBrowser.subscribeTo(["windows"], (s, prev) => {
     if (s.windows === prev.windows) return;
     const session = useHiddenElements.getState().session;
     const kept = Object.entries(session).filter(([profile]) => {
@@ -116,6 +131,7 @@ export async function startHidingElement(tabId: string, point: [number, number] 
     return;
   }
   if (point) noteElementPickerFromContextMenu();
+  const consent = consentToken();
   if (readerState(tabId).active) await closeReader(tabId);
   picking.add(tabId);
   let result: PickResult = null;
@@ -129,9 +145,22 @@ export async function startHidingElement(tabId: string, point: [number, number] 
   }
   const after = pageOf(tabId);
   const samePage = after?.host === page.host && after.profile === page.profile;
-  const filter = samePage && result?.selector ? hidingFilter(page.host, result.selector) : null;
-  if (!filter) return void noteElementPickerCancelled();
-  noteElementHidden(page.inPrivateWindow);
+  const picked = samePage && typeof result?.selector === "string" ? result.selector : null;
+  const savable = picked ? savablePickedSelector(picked) : null;
+  const filter = savable ? hidingFilter(page.host, savable) : null;
+  if (!filter) {
+    if (picked) void web.evaluate(pickerCall("unhide", [picked]));
+    return void noteElementPickerCancelled(consent);
+  }
+  const selector = filter.slice(filter.indexOf("##") + 2);
+  if (selector !== picked) {
+    notePickedSelectorEscaped(consent);
+    void web
+      .evaluate(pickerCall("apply", [selector]))
+      .then(() => web.evaluate(pickerCall("unhide", [picked])))
+      .catch(() => {});
+  }
+  noteElementHidden(page.inPrivateWindow, consent);
   if (page.inPrivateWindow) {
     useHiddenElements.setState((s) => {
       const kept = s.session[page.profile] ?? [];
@@ -142,7 +171,7 @@ export async function startHidingElement(tabId: string, point: [number, number] 
   try {
     await hideElements(page.profile, [filter]);
   } catch {
-    noteHiddenElementWriteFailure();
+    noteHiddenElementWriteFailure(consent);
   }
   changed();
 }
@@ -175,31 +204,46 @@ export async function restoreHiddenElements(profile: string, elements: HiddenEle
   if (session.size)
     useHiddenElements.setState((s) => ({ session: { ...s.session, [profile]: (s.session[profile] ?? []).filter((f) => !session.has(f)) } }));
   unhideInOpenTabs(profile, elements);
+  const consent = consentToken();
   try {
     if (kept.length) await restoreElements(profile, kept);
-    noteHiddenElementsRestored(elements.length);
+    noteHiddenElementsRestored(elements.length, consent);
   } catch {
-    noteHiddenElementWriteFailure();
+    noteHiddenElementWriteFailure(consent);
   }
   changed();
   if (kept.length) reloadCoveredTabs(profile, elements.filter((e) => !e.session));
 }
 
-const sessionHidingKey = (s: BrowserState, tabId: string) => {
+const sessionHidingTab = (s: BrowserState, tabId: string) => {
   const tab = s.tabs[tabId];
-  return tab && isIncognitoProfile(tab.profileId) ? `${tab.url}\n${s.live[tabId]?.isLoading ? 1 : 0}` : null;
+  return tab && isIncognitoProfile(tab.profileId) ? tab : null;
 };
 
-useBrowser.subscribe((s, prev) => {
+const sessionFilters = () => {
   const session = useHiddenElements.getState().session;
-  if (!Object.keys(session).length || (s.tabs === prev.tabs && s.live === prev.live)) return;
-  for (const tabId of Object.keys(s.tabs)) {
-    const key = sessionHidingKey(s, tabId);
-    if (!key || key === sessionHidingKey(prev, tabId)) continue;
-    const tab = s.tabs[tabId]!;
-    const host = hidingHost(tab.url);
-    const filters = session[engineProfile(s, tab.profileId)] ?? [];
-    const selectors = filters.map((f) => parseHidingFilter(f)).filter((e): e is HiddenElement => !!e && !!host && coversHost(e.host, host)).map((e) => e.selector);
-    if (selectors.length) void webviews.get(tabId)?.evaluate(pickerCall("apply", selectors));
+  return Object.keys(session).length ? session : null;
+};
+
+function applySessionHiding(s: BrowserState, session: Record<string, string[]>, tab: Tab) {
+  const host = hidingHost(tab.url);
+  const filters = session[engineProfile(s, tab.profileId)] ?? [];
+  const selectors = filters.map((f) => parseHidingFilter(f)).filter((e): e is HiddenElement => !!e && !!host && coversHost(e.host, host)).map((e) => e.selector);
+  if (selectors.length) void webviews.get(tab.id)?.evaluate(pickerCall("apply", selectors));
+}
+
+useBrowser.subscribeTo(["tabs"], (s, prev) => {
+  const session = s.tabs === prev.tabs ? null : sessionFilters();
+  if (!session) return;
+  for (const tabId of changedIds(s.tabs, prev.tabs)) {
+    const tab = sessionHidingTab(s, tabId);
+    if (tab && tab.url !== sessionHidingTab(prev, tabId)?.url) applySessionHiding(s, session, tab);
   }
+});
+
+onLiveChange((tabId, live, prev) => {
+  const session = live.isLoading === prev.isLoading ? null : sessionFilters();
+  const s = useBrowser.getState();
+  const tab = session && sessionHidingTab(s, tabId);
+  if (tab) applySessionHiding(s, session, tab);
 });

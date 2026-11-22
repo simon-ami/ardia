@@ -49,9 +49,19 @@ NS_ASSUME_NONNULL_BEGIN
 + (BOOL)isPrivateProfile:(NSString *)profile NS_SWIFT_NAME(isPrivateProfile(_:));
 @property(class, nullable, copy) void (^quitCancelledHandler)(void);
 + (void)menuShortcutsChanged;
++ (void)beginPressLoop:(NSString *)name NS_SWIFT_NAME(beginPressLoop(_:));
++ (void)endPressLoop;
++ (void)notePointer:(NSEvent *)event swallowedBy:(NSString *)name NS_SWIFT_NAME(notePointer(_:swallowedBy:));
 + (NSString *)baseProfileOf:(NSString *)profile NS_SWIFT_NAME(baseProfile(of:));
 + (void)resolvePermission:(NSString *)requestId result:(NSString *)result remember:(BOOL)remember
     NS_SWIFT_NAME(resolvePermission(_:result:remember:));
+
+@end
+
+@interface ArdiaHost (NavigationDownloads)
+
++ (void)noteNavigationDownload:(NSString *)url profile:(NSString *)profile NS_SWIFT_NAME(noteNavigationDownload(_:profile:));
++ (BOOL)wasNavigationDownload:(NSString *)url profile:(NSString *)profile NS_SWIFT_NAME(wasNavigationDownload(_:profile:));
 
 @end
 
@@ -64,6 +74,7 @@ NS_ASSUME_NONNULL_BEGIN
 @property(class, readonly) BOOL holdsIncomingLinks;
 @property(class, readonly) NSDictionary<NSString *, NSNumber *> *launchMarks;
 @property(class, readonly, nullable) NSNumber *launchedHidden;
+@property(class, readonly, nullable) NSString *launchSource;
 + (void)markMainStarted;
 + (void)setHoldIncomingLinks:(BOOL)hold hooksStamp:(nullable NSString *)hooksStamp NS_SWIFT_NAME(setHoldIncomingLinks(_:hooksStamp:));
 + (NSString *)fileStampOfDescriptor:(int)fd NS_SWIFT_NAME(fileStamp(ofDescriptor:));

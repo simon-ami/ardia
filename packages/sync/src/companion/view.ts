@@ -2,6 +2,9 @@ import { visible } from "../scope.ts";
 import type { ScopeState } from "../scopeState.ts";
 import { fromLegacy } from "./legacy.ts";
 import { lastVisitOf, type BookmarkValue, type DeviceTabs, type DeviceValue, type HistoryValue } from "./adapters.ts";
+import { themeOf, type ViewTheme } from "./theme.ts";
+
+export type { ViewTheme, ViewThemeLook, ViewThemeStop, ViewThemeTexture } from "./theme.ts";
 
 export const MAX_HISTORY_ITEMS = 2_000;
 
@@ -9,7 +12,6 @@ type Kind = "mac" | "phone";
 type ProfileRecord = { n?: unknown; c?: unknown; i?: unknown; d?: unknown; th?: unknown };
 
 export type ViewDevice = { id: string; name: string; kind: Kind; lastSeen: number | null; isCurrent: boolean; canReceiveTabs: boolean };
-export type ViewTheme = { colors: string[]; darkColors: string[] | null };
 export type ViewDeviceTabs = { deviceId: string; deviceName: string; kind: Kind; tabs: { url: string; title: string }[] };
 export type ViewPinnedTab = { key: string; title: string; url: string; icon: string | null };
 export type ViewPinnedTile = ViewPinnedTab & { folder: ViewPinnedTab[] | null };
@@ -63,32 +65,6 @@ export function dataOwner(app: ScopeState | undefined, syncId: string): string {
     path.push(owner);
     at = owner;
   }
-}
-
-function hex(n: unknown) {
-  const v = typeof n === "number" && Number.isFinite(n) ? Math.min(1, Math.max(0, n)) : 0;
-  return Math.round(v * 255).toString(16).padStart(2, "0").toUpperCase();
-}
-
-function colorsOf(look: unknown): string[] | null {
-  if (!look || typeof look !== "object" || !Array.isArray((look as { stops?: unknown }).stops)) return null;
-  const out: string[] = [];
-  for (const stop of (look as { stops: unknown[] }).stops.slice(0, 16)) {
-    if (out.length >= 3) break;
-    const c = (stop as { color?: Record<string, unknown> } | null)?.color;
-    if (!c || ![c.r, c.g, c.b].every((n) => typeof n === "number" && Number.isFinite(n) && Math.abs(n) < 4)) continue;
-    const alpha = typeof c.a === "number" && Number.isFinite(c.a) ? Math.min(1, Math.max(0, c.a)) : 1;
-    out.push(`#${hex(c.r)}${hex(c.g)}${hex(c.b)}${alpha < 1 ? hex(alpha) : ""}`);
-  }
-  return out.length ? out : null;
-}
-
-function themeOf(app: ScopeState, syncId: string, profile: ProfileRecord): ViewTheme | null {
-  const record = app.records[`pth:${syncId}`]?.v as Record<string, unknown> | null | undefined;
-  const theme = record ? (record.preset === true ? null : record.t) : profile.th;
-  const colors = colorsOf(theme);
-  if (!colors) return null;
-  return { colors, darkColors: colorsOf((theme as { dark?: unknown }).dark) };
 }
 
 function deviceTabs(scope: ScopeState | undefined, me: string, devices: Map<string, ViewDevice>): ViewDeviceTabs[] {
@@ -337,6 +313,20 @@ function searchOf(app: ScopeState): ViewSearch | null {
   return { engineId: typeof engine === "string" && engine ? engine : "google", customURL: optStr(customUrl), customEngines: engines };
 }
 
+function spaceOrder(app: ScopeState, me: string): string[] {
+  let newest: { stamp: string; id: string; order: string[] } | null = null;
+  for (const [k, v] of visible(app, "dev:")) {
+    const id = k.slice(4);
+    const stamp = app.records[k]?.h;
+    const listed = (v as DeviceValue | null)?.o;
+    if (id === me || typeof stamp !== "string" || !Array.isArray(listed)) continue;
+    const order = [...new Set(listed.filter((profile): profile is string => typeof profile === "string"))];
+    if (!order.length) continue;
+    if (!newest || stamp > newest.stamp || (stamp === newest.stamp && id < newest.id)) newest = { stamp, id, order };
+  }
+  return newest?.order ?? [];
+}
+
 export function buildView(scopes: Record<string, ScopeState>, me: string): View {
   const app = scopes.app;
   if (!app) return { devices: [], profiles: [], search: null, look: null };
@@ -369,7 +359,7 @@ export function buildView(scopes: Record<string, ScopeState>, me: string): View 
       color: optStr(p.c),
       icon: optStr(p.i),
       isDefault: syncId === defaultId,
-      theme: themeOf(app, syncId, p),
+      theme: themeOf(app, syncId, p.th),
       sendTargets: sendTargets(own, me, devices),
       deviceTabs: deviceTabs(own, me, devices),
       pinned: pinnedArea(own),
@@ -377,6 +367,8 @@ export function buildView(scopes: Record<string, ScopeState>, me: string): View 
       history: historyList(data),
     };
   });
-  profileList.sort((a, z) => Number(z.isDefault) - Number(a.isDefault) || a.name.localeCompare(z.name) || (a.syncId < z.syncId ? -1 : 1));
+  const rank = new Map(spaceOrder(app, me).map((id, i) => [id, i]));
+  const placed = (p: ViewProfile) => rank.get(p.syncId) ?? rank.size;
+  profileList.sort((a, z) => placed(a) - placed(z) || Number(z.isDefault) - Number(a.isDefault) || a.name.localeCompare(z.name) || (a.syncId < z.syncId ? -1 : 1));
   return { devices: deviceList, profiles: profileList, search: searchOf(app), look: lookOf(app) };
 }

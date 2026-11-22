@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { useBrowser, type BrowserState } from "../browser/store";
+import { useKeyed, watchWindowRecord } from "../browser/keyedWatch";
 import { currentInterfaceScale, rootSizeOfFrame, useInterfaceScale } from "../settings/interfaceScale";
 
 export type RootSize = { width: number; height: number };
@@ -25,8 +26,10 @@ export function windowRootSize(s: Pick<BrowserState, "windows">, windowId: strin
 
 export const windowRootWidth = (s: Pick<BrowserState, "windows">, windowId: string): number | undefined => windowRootSize(s, windowId)?.width;
 
+export const onWindowRootSizes = (listener: () => void): (() => void) => useRootSizes.subscribe(listener);
+
 export function useWindowRootWidth(windowId: string): number | undefined {
-  const frameWidth = useBrowser((s) => s.windows[windowId]?.frame?.[2]);
+  const frameWidth = useKeyed(watchWindowRecord, windowId, () => useBrowser.getState().windows[windowId]?.frame?.[2]);
   const scale = useInterfaceScale((s) => s.scale);
   return useRootSizes((sizes) => sizes[windowId]?.width ?? (frameWidth === undefined ? undefined : frameWidth / scale));
 }

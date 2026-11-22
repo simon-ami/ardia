@@ -5,7 +5,7 @@ Use task branches in this checkout. Preserve unrelated work. Do not use worktree
 Run tools, dependency installs, builds, checks, installation, and cleanup yourself. T3 buttons are optional.
 Use the existing build locks. Keep test instances hidden and use scratch data.
 
-Local commits are authorized. Wait for Simon's required manual tests before committing.
+Local commits are authorized. Wait for the user's required manual tests before committing.
 Ask before pushing, opening PRs, or removing custom feature code. Reuse approval already given for this task.
 Do not publish releases or deploy sites. Keep the official app and its profile unchanged.
 Write brief reports and collaboration text in roughly 80% ASD-STE100. State both what changed and how.
@@ -19,19 +19,19 @@ For copies, name what stays shared and what becomes independent.
    for an upstream update. Use source diffs and relevant PR metadata to narrow investigation.
 3. Select the change and check engine availability before spending time on implementation or building.
    Do not replace a missing engine with an older one or start a full Chromium build without discussing its cost.
-4. Decide the smallest useful checks and whether Simon needs a manual test. Do not repeat setup checks
+4. Decide the smallest useful checks and whether the user needs a manual test. Do not repeat setup checks
    whose inputs and behavior are unchanged.
 
 ## Upstream update
 
-1. Fetch release metadata and refs. Select the newest published stable or nightly release by version order.
-   Stable wins over nightlies of the same version. Do not use `main` unless Simon explicitly requests it.
+1. Fetch release metadata and refs. Select the newest published stable release by version order.
+   Do not use nightlies or `main` unless the user explicitly requests them.
    Resolve the tag to a full commit; record both. Ask if release order is ambiguous.
 2. Compare the target with the fork and active feature requirements. Check relevant upstream code and PRs
    for merged or alternative implementations. Search by behavior, not only titles.
    Untouched code and unrelated PRs do not require exhaustive rereading.
    Prefer upstream when it provides the same value or more. For partial coverage, use upstream as the base
-   and adapt only the missing behavior or styling when practical. Prepare that variant for Simon to test
+   and adapt only the missing behavior or styling when practical. Prepare that variant for the user to test
    before finalizing replacements or retiring custom features.
 3. Merge on an update branch. Keep newer fork commits. Resolve mechanical conflicts yourself.
    Ask when a conflict changes intended behavior. Ask before removing custom code, even if upstream replaces it.
@@ -68,10 +68,10 @@ For copies, name what stays shared and what becomes independent.
 | CLI only | CLI checks; reuse the unchanged app binary when possible. |
 
 Follow this workflow and [the repository testing policy](testing.md#whats-kept-and-why) when choosing checks.
-Do not invoke a separate testing skill unless Simon explicitly asks. Prefer existing app exercises and affected
+Do not invoke a separate testing skill unless the user explicitly asks. Prefer existing app exercises and affected
 regression tests. Add tests for data loss, privacy, integration boundaries, or a demonstrated regression that is
 hard to catch by eye. Do not add tests that only restate implementation details or visual constants.
-For small UI changes, a hidden scratch launch plus Simon's manual interaction and appearance check is sufficient
+For small UI changes, a hidden scratch launch plus the user's manual interaction and appearance check is sufficient
 alongside typecheck and affected existing tests. Automate repeated E2E checks when their value justifies upkeep.
 Use golden fixtures only with independently reviewed expected results; never accept regenerated output blindly.
 
@@ -90,7 +90,7 @@ which can be the Release build when that is the shortest useful route.
 1. Run available source-level checks before building. Run `python3 scripts/personal/build-app.py`.
    It prepares the matching engine, reuses a recorded unchanged
    Release or builds one, prepares the matching CLI without activating it, and signs the candidate with
-   Simon's existing certificate. During an uncommitted update merge, it matches the staged engine tree;
+   the existing personal signing certificate. During an uncommitted update merge, it matches the staged engine tree;
    unstaged or untracked engine files block prebuilt lookup. It bundles JavaScript; the delivered app never depends on Metro.
    If needed, request the signing password through the private secret tool. Never put it in logs, arguments,
    Git, or a persistent script. Use one private password file within the task; remove that temporary file when done.
@@ -99,11 +99,11 @@ which can be the Release build when that is the shortest useful route.
    `--sign-only` is only for a recorded build whose inputs and program files still match.
    After candidate tests, unregister that build with `lsregister -u` and register the installed personal app
    with `lsregister -f`, unless installing immediately. Do not leave build copies as browser-handler candidates.
-3. Give Simon only the required manual steps and expected results. Use a scratch profile for candidate tests.
+3. Give the user only the required manual steps and expected results. Use a scratch profile for candidate tests.
    If real-profile behavior needs validation, install with a backup first and test it there. Never run the build
    and installed app against the personal profile at the same time. Do not launch a candidate on real data
    before taking a backup. The official profile is never the routine test source.
-4. Let Simon keep using the installed app during preparation. Ask him to quit it only for installation.
+4. Let the user keep using the installed app during preparation. Ask the user to quit it only for installation.
    Run `python3 scripts/personal/install-app.py` once checks allow installation. It validates the recorded
    candidate, snapshots the personal profile and preferences, preserves the current app and CLI reference,
    and installs the paired app and CLI. Do not rebuild a tested candidate just to install it.
@@ -127,23 +127,17 @@ rg -l --hidden --no-ignore -L -i 'ardia(-personal)?' \
   ~/.config/opencode/skills(N) ~/.cursor/skills(N) ~/.gemini/skills(N) -g SKILL.md
 ```
 
-Also inspect project skill directories and paths recorded in `$ARDIA_CLI_HOME/skills.json`
-(default: `~/Library/Application Support/Ardia/CLI/skills.json`). Resolve shared symlinks once.
-Compare each skill and its references with the bundle shipped by the installed personal CLI.
-Check against candidate sources during preparation; refresh only after activating that CLI.
-If the bundle changed, use `ardia-personal skills refresh` where that version supports it.
-It updates marked copies and can update or install its managed `cua-driver` companion; review its output.
-Unmarked copies are skipped. Inspect and back them up before migrating with `skills install`;
-preserve local edits and never use `--replace` blindly. Do not install into unused agents.
-Preserve the fork's skill customization in `apps/cli/ardia_cli/skill/`, including all references:
-CLI invocations, shell strings, the description, and `allowed-tools` must use `ardia-personal`.
-Keep skill name `ardia`, paths, environment variables, identifiers, and literal app labels unchanged.
-During upstream merges, inspect new examples and conflicts; never restore the official command by accepting
-upstream wholesale. Use `ardia` only when Simon explicitly requests the official browser.
-Older personal CLI bundles can still ship upstream wording. After refresh or reinstall, apply these same
-command substitutions to installed copies without copying newer command documentation into an older CLI.
-Compare installed files with the activated bundle plus these substitutions and report any other differences.
-Verify each consuming agent also has the personal-command instruction.
+The personal build fetches the macOS CLI artifact pinned in `apps/browser/official-plugins.json`,
+checks its SHA-256, and applies the isolation changes in `scripts/personal/prepare-cli.py`.
+For each pin change, check the upstream launcher, profile and endpoint selection, Keychain service,
+CLI state, helper installation paths, and bundled skill examples. A missing artifact or changed
+isolation patch blocks activation. Keep the app and CLI paired through the signed build record.
+
+Inspect project skill directories and the records under `~/Library/Application Support/Ardia Personal/CLI`.
+Compare installed skills with the prepared personal bundle before activation. After activation, update
+only the installed personal copies. Back up local changes and preserve them. Review companion changes
+before using `skills refresh`, which can also update the Cua Driver skill.
+Keep the skill name `ardia` and use `ardia-personal` in command examples and tool permissions.
 
 ## Fork CI
 
@@ -163,13 +157,16 @@ Check for new workflows after each upstream merge with `gh workflow list --all -
 Prepare a fork integration PR for protected `main`. For a useful new product change, also prepare a focused
 upstream contribution. Exclude personal tooling, branding, workflow files, and sync merges from upstream PRs.
 Before publication, show the destination, scope, checks, and draft title and description. Ask once.
+For fork PRs, pass `simon-ami/ardia` explicitly as the target repository and verify the base branch.
+Use a PR creation tool that accepts the repository. T3's `pull_request_create` infers the repository
+and can choose `upstream` even after pushing to `origin`.
 For the fork, include push, PR creation, and merge in one approval request.
 If an upstream issue is required, include its draft in that approval. Fork issues are currently disabled.
 Monitor checks through T3 when merging is pending. Do not call an update integrated until the PR is merged.
 After merge, fast-forward local `main`; no rebuild is needed if program inputs are unchanged.
 
 If a deployed update fails, stop and inspect. Do not silently downgrade a potentially migrated profile.
-On Simon's request, stop the personal app, preserve the failed current state, and restore the app, profile,
+On user request, stop the personal app, preserve the failed current state, and restore the app, profile,
 preferences, and CLI reference from the same update snapshot. Restoring only an old executable is insufficient.
 Snapshots and the original migration backup stay private and out of Git. Do not delete them automatically.
 
@@ -177,16 +174,10 @@ Snapshots and the original migration backup stay private and out of Git. Do not 
 
 Preserve README fork notice `2286d63b`, PR CI workflow `84beb05f`, and the personal-build feature record.
 Starting point after setup: fork `main` at `9d18a24e`.
-The installed update targets `v0.2.47-nightly.5`, commit `f6636c47bd20ac2c86d82f5b54898498594b0512`.
-Candidate and installed records match current sources; the paired CLI is `0.2.47-personal.1`.
-All custom features remain active. Upstream strikethrough partially overlaps title fading; Simon confirmed
-that the fork should retain fade-only alongside upstream strikethrough. Unreleased upstream Sleep Tab and cross-space extension recovery are documented in the ledger,
-not imported. No replacement or custom-code removal is approved.
-Workspace typechecks, package tests, personal lifecycle tests, and focused custom-feature tests pass.
-The browser suite's four initial failures were corrected and rechecked. The CLI suite passed except one
-personal-skill length assertion; shortening the text and rerunning its 52 tests passed.
-Hidden signed-candidate checks cover MRU selection, close/unload successors, switcher row closing,
-sleeping filtering, settings persistence, and no background startup warmup after 15 seconds.
-Simon confirmed all requested manual checks passed.
-Evidence: `apps/browser/build-personal-signed/update-0.2.47-nightly.5/`.
-Installation snapshot: `20261117-182424-c196d008`. The managed Ardia skill matches the activated CLI bundle.
+The installed update targets `v0.2.48`, commit `6b1bcbaca49e766a3be05c6e7c52d57a69c0bd0d`.
+The signed app uses Chromium `158.0.8127.36`, engine key `f910adbf8042b7c3f297ce0dd352a35f85aef2c4`.
+The paired CLI and managed skill use upstream `0.6.0` through `ardia-personal`. All eight custom features remain active.
+Typechecks (11 packages + Linux typecheck and module graph), 203 focused browser checks, personal engine/lifecycle/path checks,
+and a hidden candidate launch passed.
+Installation snapshot: `20261122-232006-197c1da7`.
+The user confirmed restored tabs, an existing login, Control-Tab previews, Unload Tab with reload on selection, and Peek scrolling.

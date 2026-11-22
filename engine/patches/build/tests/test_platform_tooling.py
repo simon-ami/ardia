@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 import argparse
 import importlib.util
+import gzip
+import hashlib
 import os
 import pathlib
 import shutil
@@ -26,6 +28,9 @@ def module(name, path):
 target = module('target', BUILD / 'target_config.py')
 series = module('series', BUILD.parent / 'series.py')
 helium = module('helium', BUILD / '03-helium.py')
+ARDIA_THEME = REPO / 'engine/chromium/src/chrome/app/theme'
+LINUX_LOGOS = {f'chrome/app/theme/chromium/linux/product_logo_{size}.png': ARDIA_THEME / f'chromium/product_logo_{size}.png' for size in (24, 48, 64, 128, 256)}
+LINUX_LOGOS.update({f'chrome/app/theme/default_100_percent/chromium/linux/product_logo_{size}.png': ARDIA_THEME / f'default_100_percent/chromium/product_logo_{size}.png' for size in (16, 32)})
 packaging = module('packaging', REPO / 'scripts/linux/package.py')
 formats = packaging.linux_formats
 
@@ -122,6 +127,9 @@ class TargetTests(unittest.TestCase):
             env = dict(os.environ, CHROMIUM_SRC=str(root))
             def apply(*args):
                 return subprocess.run([str(layer / 'apply.sh'), *args], env=env, text=True, capture_output=True)
+            for path in LINUX_LOGOS:
+                (root / path).parent.mkdir(parents=True, exist_ok=True)
+                (root / path).write_bytes(b'helium logo\n')
             result = apply()
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
             for path, directory in series.layer_paths(str(layer)):
@@ -138,6 +146,44 @@ class TargetTests(unittest.TestCase):
             self.assertIn('assert(is_linux)', build)
             self.assertNotIn('frameworks', build)
             self.assertNotIn('//ardia/linux"', build)
+
+    def test_linux_layer_replaces_helium_window_logos_with_ardia(self):
+        layer = REPO / 'engine/ardiacore-linux'
+        self.assertLessEqual(set(LINUX_LOGOS), {path for path, directory in series.layer_paths(str(layer)) if not directory})
+        with tempfile.TemporaryDirectory() as scratch:
+            root = pathlib.Path(scratch)
+            env = dict(os.environ, CHROMIUM_SRC=str(root))
+            def apply(*args):
+                return subprocess.run([str(layer / 'apply.sh'), *args], env=env, text=True, capture_output=True)
+            for path in LINUX_LOGOS:
+                (root / path).parent.mkdir(parents=True, exist_ok=True)
+                (root / path).write_bytes(b'helium logo\n')
+            result = apply()
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            for path, source in LINUX_LOGOS.items():
+                self.assertEqual((root / path).read_bytes(), source.read_bytes(), path)
+            result = apply('--check')
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            for path in LINUX_LOGOS:
+                original = (root / path).read_bytes()
+                (root / path).write_bytes(b'helium logo\n')
+                self.assertIn(f'drift: {path}', apply('--check').stderr)
+                (root / path).unlink()
+                self.assertIn(f'drift: {path}', apply('--check').stderr)
+                untouched = [other for other in LINUX_LOGOS if other != path]
+                for other in untouched:
+                    (root / other).write_bytes(b'helium logo\n')
+                result = apply()
+                self.assertNotEqual(result.returncode, 0, path)
+                self.assertIn(f"{path} isn't in the tree", result.stderr)
+                self.assertFalse((root / path).exists(), path)
+                for other in untouched:
+                    self.assertEqual((root / other).read_bytes(), b'helium logo\n', other)
+                (root / path).write_bytes(original)
+                result = apply()
+                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                result = apply('--check')
+                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
 
 class SeriesFixtureTests(unittest.TestCase):
@@ -308,6 +354,11 @@ class PackagingTests(unittest.TestCase):
                 self.assertIn('<action id="dev.ardia.linux.reauthenticate">', policy)
                 self.assertIn('<allow_active>auth_self</allow_active>', policy)
                 self.assertIn('<allow_any>no</allow_any>', policy)
+                start = policy.index('<action id="dev.ardia.linux.update">')
+                update = policy[start:policy.index('</action>', start)]
+                self.assertIn('<allow_active>yes</allow_active>', update)
+                self.assertIn('<allow_inactive>auth_self</allow_inactive>', update)
+                self.assertIn('<allow_any>auth_self</allow_any>', update)
                 self.assertNotIn('auth_self_keep', policy)
                 self.assertNotIn('<!--', policy)
             with self.assertRaises(ValueError):
@@ -385,9 +436,18 @@ class PackagingTests(unittest.TestCase):
                                         capture_output=True, text=True, timeout=60)
                 self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
                 policy = destdir / 'usr/share/polkit-1/actions/dev.ardia.linux.policy'
-                self.assertEqual(policy.read_text(), (REPO / 'scripts/linux/dev.ardia.linux.policy').read_text())
+                source_policy = (REPO / 'scripts/linux/dev.ardia.linux.policy').read_text()
+                self.assertIn('>/usr/lib/ardia/ardia-update<', source_policy)
+                if prefix == '/usr':
+                    self.assertEqual(policy.read_text(), source_policy)
+                else:
+                    self.assertNotIn('dev.ardia.linux.update', policy.read_text())
+                    self.assertIn('<action id="dev.ardia.linux.reauthenticate">', policy.read_text())
                 self.assertEqual(policy.stat().st_mode & 0o777, 0o644)
                 installed = destdir / prefix.lstrip('/')
+                self.assertEqual(oct((installed / 'lib/ardia/ardia-update').stat().st_mode & 0o777), oct(0o755))
+                self.assertEqual(oct((installed / 'lib/ardia/linux-update.pem').stat().st_mode & 0o777), oct(0o644))
+                self.assertEqual([path.name for path in (installed / 'lib').iterdir()], ['ardia'])
                 self.assertTrue((installed / 'lib/ardia/chrome').is_file())
                 self.assertTrue(os.access(installed / 'lib/ardia/chrome', os.X_OK))
                 self.assertTrue((installed / 'lib/ardia/ardia-ui/index.html').is_file())
@@ -484,7 +544,7 @@ class PackagingTests(unittest.TestCase):
         runtime.mkdir(parents=True)
         shutil.copyfile(REPO / 'scripts/linux/ardia-launch', runtime / 'ardia-launch')
         (runtime / 'ardia-launch').chmod(0o755)
-        (runtime / 'chrome').write_text('#!/usr/bin/env bash\nprintf "%s\\n" "$@"\n')
+        (runtime / 'chrome').write_text(env.get('chrome', '#!/usr/bin/env bash\nprintf "%s\\n" "$@"\n'))
         (runtime / 'chrome').chmod(0o755)
         proc = root / 'proc'
         for name, value in env.get('proc', {}).items():
@@ -496,6 +556,8 @@ class PackagingTests(unittest.TestCase):
             (root / 'apparmor.d').mkdir()
             (root / 'apparmor.d/ardia').write_text(env['profile'].replace('CHROME', str((runtime / 'chrome').resolve())))
         variables = {'PATH': os.environ['PATH'], **env.get('vars', {})}
+        if 'APPIMAGE' in variables:
+            variables.setdefault('APPDIR', str(root.resolve()))
         return subprocess.run([str(runtime / 'ardia-launch'), '--marker', *extra], capture_output=True, text=True, timeout=30, env=variables)
 
     def test_the_launcher_keeps_the_sandbox_and_runs_without_it_only_when_asked(self):
@@ -509,6 +571,7 @@ class PackagingTests(unittest.TestCase):
             ('namespaces off', {'proc': {'sys/user/max_user_namespaces': '0'}}, (), 1, None),
             ('asked', {'proc': restricted}, ('--no-sandbox',), 0, None),
             ('AppImage, asked', {'proc': restricted, 'vars': {'APPIMAGE': '/tmp/Ardia.AppImage'}}, ('--no-sandbox',), 0, None),
+            ('APPIMAGE without APPDIR', {'proc': restricted, 'vars': {'APPIMAGE': '/tmp/Ardia.AppImage', 'APPDIR': ''}}, (), 1, None),
         ]
         for label, env, extra, code, expected in cases:
             with self.subTest(label), tempfile.TemporaryDirectory() as scratch:
@@ -520,6 +583,8 @@ class PackagingTests(unittest.TestCase):
                 if code == 1:
                     self.assertEqual(lines, [])
                     self.assertIn("can't start Chromium's sandbox", result.stderr)
+                if label == 'APPIMAGE without APPDIR':
+                    self.assertNotIn("Ardia won't run without the sandbox", result.stderr)
                 if label.startswith('AppImage') and code == 1:
                     self.assertIn("Ardia won't run without the sandbox", result.stderr)
                     self.assertIn("Install Ardia's .deb, which sets up the sandbox helper and its AppArmor profile", result.stderr)
@@ -529,6 +594,21 @@ class PackagingTests(unittest.TestCase):
                     self.assertIn('allow user namespaces with sudo sysctl -w kernel.unprivileged_userns_clone=1.', result.stderr)
                 if label in ('asked', 'AppImage, asked'):
                     self.assertEqual(lines, ['--ardia-sandbox-decision=Ardia was started with --no-sandbox', '--marker', '--no-sandbox'])
+
+    def test_an_instance_with_its_own_user_data_dir_keeps_its_crash_dumps_there(self):
+        cases = [
+            ('default profile', (), {}, ''),
+            ('own data dir', ('--user-data-dir=/scratch/one',), {}, '/scratch/one/Crash Reports'),
+            ('last data dir wins', ('--user-data-dir=/scratch/one', '--user-data-dir=/scratch/two'), {}, '/scratch/two/Crash Reports'),
+            ('no sandbox', ('--user-data-dir=/scratch/one', '--no-sandbox'), {}, '/scratch/one/Crash Reports'),
+            ('chosen by the caller', ('--user-data-dir=/scratch/one',), {'BREAKPAD_DUMP_LOCATION': '/dumps'}, '/dumps'),
+        ]
+        for label, extra, variables, expected in cases:
+            with self.subTest(label), tempfile.TemporaryDirectory() as scratch:
+                root = pathlib.Path(scratch)
+                result = self.launcher_run(root, {'vars': variables, 'chrome': '#!/usr/bin/env bash\nprintf "%s\\n" "${BREAKPAD_DUMP_LOCATION:-}"\n'}, extra)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual(result.stdout.splitlines(), [expected])
 
     @unittest.skipUnless(shutil.which('dpkg-deb'), 'dpkg-deb is required')
     def test_the_deb_installs_under_usr_with_a_setuid_helper_the_policy_and_the_apparmor_profile(self):
@@ -555,6 +635,33 @@ class PackagingTests(unittest.TestCase):
             self.assertIn('chmod 4755 "$helper"', postinst)
             self.assertIn('apparmor_parser -r /etc/apparmor.d/ardia', postinst)
             self.assertIn('rm -f /etc/apparmor.d/ardia', (scripts / 'postrm').read_text())
+            self.assertIn('update-alternatives --install "/usr/bin/$name" "$name" /usr/bin/ardia 100', postinst)
+            self.assertIn('for name in x-www-browser gnome-www-browser', postinst)
+            prerm = (scripts / 'prerm').read_text()
+            self.assertIn('update-alternatives --remove "$name" /usr/bin/ardia', prerm)
+            self.assertIn('if [ "$1" = remove ]; then', prerm)
+            self.assertNotIn('deconfigure', prerm)
+            for rollback in ('abort-remove', 'abort-deconfigure', 'abort-upgrade'):
+                self.assertIn(f'[ "$1" = {rollback} ]', postinst)
+            fields = subprocess.run(['dpkg-deb', '-f', str(deb), 'Depends', 'Provides'], capture_output=True, text=True, check=True).stdout
+            self.assertIn('Provides: www-browser', fields)
+            for package in ('libc6 (>= 2.17)', 'libgtk-3-0t64 | libgtk-3-0', 'libsecret-1-0', 'xdg-utils', 'curl', 'openssl'):
+                self.assertIn(package, fields)
+            self.assertIn('Upstream-Name: Ardia', (unpacked / 'usr/share/doc/ardia/copyright').read_text())
+            with gzip.open(unpacked / 'usr/share/doc/ardia/changelog.gz', 'rt') as changelog:
+                self.assertIn('ardia (0.2.47~nightly.3) stable', changelog.read())
+            sums = dict(reversed(line.split('  ', 1)) for line in (scripts / 'md5sums').read_text().splitlines())
+            self.assertEqual(sums['usr/lib/ardia/chrome'], hashlib.md5((unpacked / 'usr/lib/ardia/chrome').read_bytes()).hexdigest())
+            self.assertIn('usr/share/doc/ardia/copyright', sums)
+            self.assertFalse([name for name in sums if name.startswith('usr/bin/')])
+
+    @unittest.skipUnless(shutil.which('dpkg-deb'), 'dpkg-deb is required')
+    def test_a_deb_needs_a_version(self):
+        with tempfile.TemporaryDirectory() as scratch:
+            root = pathlib.Path(scratch)
+            with self.assertRaisesRegex(ValueError, 'needs --version'):
+                self.fake_package(root, sandbox=True, deb=root / 'ardia.deb')
+            self.assertFalse((root / 'ardia.tar.xz').exists())
 
     def test_the_appimage_carries_no_setuid_helper_runs_the_launcher_and_has_the_type_2_header(self):
         with tempfile.TemporaryDirectory() as scratch:

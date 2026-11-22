@@ -3,12 +3,14 @@ import { webviews } from "../../platform/webviews";
 import { withDeadline } from "../../lib/deadline";
 import { useBrowser, type BrowserState } from "../browser/store";
 import { changedIds } from "../browser/changes";
+import { liveOf, onLiveChange } from "../tabs/tabLive";
 import { activeTabId } from "../browser/model";
 import { peekTabId } from "../peek/peek";
 import { showToast } from "../app/toasts";
 import { noteReaderCheck, noteReaderNoArticle, noteReaderOpened } from "../telemetry/readerCounts";
+import { consentToken } from "../telemetry/client";
 import { readerCall, readerCheckCall, readerToggleCall, type ReaderLook, type ReaderReport } from "./readerPage";
-import { READER_SIZE_NAMES } from "./tokens";
+import { READER_FONTS, READER_SIZE_NAMES } from "./tokens";
 
 export type ReaderState = { url: string; available: boolean; active: boolean };
 
@@ -35,21 +37,44 @@ function lookFrom(s: BrowserState): ReaderLook {
   return { dark: s.ui.appDark, size: size < 0 ? 1 : size, font: s.settings.readerFont };
 }
 
+function lookOf(raw: unknown): ReaderLook | undefined {
+  if (!raw || typeof raw !== "object") return undefined;
+  const { dark, size, font } = raw as Record<string, unknown>;
+  if (typeof size !== "number" || !Number.isInteger(size) || size < 0 || size >= READER_SIZE_NAMES.length) return undefined;
+  if (!(READER_FONTS as readonly unknown[]).includes(font)) return undefined;
+  return { dark: dark === true, size, font: font as ReaderLook["font"] };
+}
+
+function reportOf(raw: unknown): ReaderReport | null {
+  if (!raw || typeof raw !== "object") return null;
+  const { active, readerable, noArticle, look } = raw as Record<string, unknown>;
+  return { active: active === true, readerable: readerable === true, noArticle: noArticle === true, look: lookOf(look) };
+}
+
 function keepLook(look: ReaderLook | undefined) {
   if (!look) return;
   const s = useBrowser.getState();
-  const readerTextSize = READER_SIZE_NAMES[look.size] ?? s.settings.readerTextSize;
-  const readerFont = look.font === "sans" ? "sans" : "serif";
+  const readerTextSize = READER_SIZE_NAMES[look.size]!;
+  const readerFont = look.font;
   if (readerTextSize !== s.settings.readerTextSize || readerFont !== s.settings.readerFont) s.updateSettings({ readerTextSize, readerFont });
 }
 
 async function callPage(tabId: string, code: string): Promise<ReaderReport | null> {
   const web = webviews.get(tabId);
   if (!web) return null;
-  return withDeadline(web.evaluate<ReaderReport>(code), CALL_DEADLINE_MS, null).catch(() => null);
+  return withDeadline(web.evaluate<unknown>(code), CALL_DEADLINE_MS, null).then(reportOf, () => null);
 }
 
 let lookPushes = 0;
+const grants = new Map<string, number>();
+const documents = new Map<string, number>();
+let nextDocument = 0;
+const documentOf = (tabId: string) => documents.get(tabId) ?? 0;
+
+function replaceDocument(tabId: string) {
+  documents.set(tabId, ++nextDocument);
+  grants.delete(tabId);
+}
 
 function pushLook(s: BrowserState) {
   lookPushes++;
@@ -57,12 +82,16 @@ function pushLook(s: BrowserState) {
   for (const [tabId, state] of Object.entries(useReader.getState())) if (state?.active) void callPage(tabId, readerCall("setLook", look));
 }
 
-function settle(tabId: string, url: string, report: ReaderReport, available?: boolean, pushesBefore = lookPushes) {
+type Settling = { pushesBefore: number; documentBefore: number; write: boolean; grant?: boolean };
+
+function settle(tabId: string, url: string, report: ReaderReport, available: boolean | undefined, { pushesBefore, documentBefore, write, grant = false }: Settling) {
   const tab = useBrowser.getState().tabs[tabId];
-  if (!tab || tab.url !== url) return;
+  if (!tab || tab.url !== url || documentOf(tabId) !== documentBefore) return;
   const before = readerState(tabId);
   set(tabId, { url, available: available ?? before.available, active: report.active });
-  if ((report.active || before.active) && pushesBefore === lookPushes) keepLook(report.look);
+  if ((report.active || before.active) && pushesBefore === lookPushes && write) keepLook(report.look);
+  if (!report.active) grants.delete(tabId);
+  else if (grant && write) grants.set(tabId, documentBefore);
 }
 
 const counted = new Map<string, string>();
@@ -72,15 +101,17 @@ async function check(tabId: string) {
   if (!tab || !readable(tab.url)) return;
   const url = tab.url;
   const pushes = lookPushes;
+  const documentBefore = documentOf(tabId);
+  const consent = consentToken();
   const report = await callPage(tabId, readerCheckCall());
   if (!report) return;
   const available = !!report.readerable;
   const first = counted.get(tabId) !== url;
   if (first) {
     counted.set(tabId, url);
-    noteReaderCheck(available);
+    noteReaderCheck(available, consent);
   }
-  settle(tabId, url, report, available, pushes);
+  settle(tabId, url, report, available, { pushesBefore: pushes, documentBefore, write: false });
   if (first && !available && useBrowser.getState().tabs[tabId]?.url === url) later(tabId, url);
 }
 
@@ -92,41 +123,44 @@ function later(tabId: string, url: string) {
     setTimeout(() => {
       rechecks.delete(tabId);
       const s = useBrowser.getState();
-      if (s.tabs[tabId]?.url === url && !s.live[tabId]?.isLoading && !readerState(tabId).available) void check(tabId);
+      if (s.tabs[tabId]?.url === url && !liveOf(tabId).isLoading && !readerState(tabId).available) void check(tabId);
     }, RECHECK_MS),
   );
 }
 
-export function runReaderCommand(command: string, tabId: string): boolean {
+export function runReaderCommand(command: string, tabId: string, mayWrite?: () => boolean): boolean {
   if (command !== "toggleReader") return false;
-  void toggleReader(tabId);
+  void toggleReader(tabId, mayWrite);
   return true;
 }
 
-export async function toggleReader(tabId: string) {
+export async function toggleReader(tabId: string, mayWrite?: () => boolean) {
   const s = useBrowser.getState();
   const tab = s.tabs[tabId];
   if (!tab || !readable(tab.url)) return;
   const url = tab.url;
   const pushes = lookPushes;
+  const documentBefore = documentOf(tabId);
+  const consent = consentToken();
   const report = await callPage(tabId, readerToggleCall(lookFrom(s)));
   if (!report) return;
   if (report.noArticle) {
-    noteReaderNoArticle();
-    settle(tabId, url, report, false, pushes);
+    noteReaderNoArticle(consent);
+    settle(tabId, url, report, false, { pushesBefore: pushes, documentBefore, write: !mayWrite || mayWrite() });
     showToast(tab.windowId, "No article found on this page", undefined, { icon: "doc.plaintext" });
     return;
   }
-  if (report.active) noteReaderOpened();
-  settle(tabId, url, report, true, pushes);
+  if (report.active) noteReaderOpened(consent);
+  settle(tabId, url, report, true, { pushesBefore: pushes, documentBefore, write: !mayWrite || mayWrite(), grant: true });
 }
 
-export async function closeReader(tabId: string) {
+export async function closeReader(tabId: string, mayWrite?: () => boolean) {
   const url = useBrowser.getState().tabs[tabId]?.url;
   if (!url || !readerState(tabId).active) return;
   const pushes = lookPushes;
+  const documentBefore = documentOf(tabId);
   const report = await callPage(tabId, readerCall("hide"));
-  if (report) settle(tabId, url, report, undefined, pushes);
+  if (report) settle(tabId, url, report, undefined, { pushesBefore: pushes, documentBefore, write: !mayWrite || mayWrite() });
 }
 
 function shownTabIds(s: BrowserState): Set<string> {
@@ -149,7 +183,7 @@ function schedule(tabId: string) {
       pending.delete(tabId);
       const s = useBrowser.getState();
       const tab = s.tabs[tabId];
-      if (tab && readable(tab.url) && !s.live[tabId]?.isLoading && readerState(tabId).url !== tab.url) void check(tabId);
+      if (tab && readable(tab.url) && !liveOf(tabId).isLoading && readerState(tabId).url !== tab.url) void check(tabId);
     }, CHECK_DELAY_MS),
   );
 }
@@ -161,6 +195,8 @@ function forget(tabId: string) {
     timers.delete(tabId);
   }
   counted.delete(tabId);
+  grants.delete(tabId);
+  documents.delete(tabId);
 }
 
 function navigated(tabId: string, from: string, to: string) {
@@ -168,6 +204,7 @@ function navigated(tabId: string, from: string, to: string) {
   if (before === NONE) return;
   if (before.active && withoutHash(from) === withoutHash(to)) return set(tabId, { ...before, url: to });
   if (before.active) void callPage(tabId, readerCall("hide"));
+  replaceDocument(tabId);
   set(tabId, NONE);
 }
 
@@ -177,8 +214,9 @@ async function sync() {
   for (const [tabId, state] of Object.entries(useReader.getState())) {
     if (!state?.active || !shown.has(tabId)) continue;
     const pushes = lookPushes;
+    const documentBefore = documentOf(tabId);
     const report = await callPage(tabId, readerCall("state"));
-    if (report) settle(tabId, state.url, report, undefined, pushes);
+    if (report) settle(tabId, state.url, report, undefined, { pushesBefore: pushes, documentBefore, write: grants.get(tabId) === documentBefore });
   }
 }
 
@@ -198,6 +236,19 @@ export function startReader() {
       timer = null;
     }
   });
+  const scheduleShown = (s: BrowserState) => {
+    for (const id of shownTabIds(s)) {
+      const tab = s.tabs[id];
+      if (tab && readable(tab.url) && !liveOf(id).isLoading && readerState(id).url !== tab.url) schedule(id);
+    }
+  };
+  const stopLive = onLiveChange((id, live, prev) => {
+    if (live.isLoading === prev.isLoading) return;
+    if (live.isLoading) replaceDocument(id);
+    const s = useBrowser.getState();
+    if (!live.isLoading && s.tabs[id] && readerState(id).url) set(id, { ...readerState(id), url: "" });
+    scheduleShown(s);
+  });
   const stop = useBrowser.subscribe((s, prev) => {
     if (s.tabs !== prev.tabs) {
       for (const id of changedIds(s.tabs, prev.tabs)) {
@@ -209,21 +260,13 @@ export function startReader() {
         } else if (was && was.url !== tab.url) navigated(id, was.url, tab.url);
       }
     }
-    if (s.live !== prev.live) {
-      for (const id of changedIds(s.live, prev.live)) {
-        if (prev.live[id]?.isLoading && !s.live[id]?.isLoading && readerState(id).url) set(id, { ...readerState(id), url: "" });
-      }
-    }
     if (s.ui.appDark !== prev.ui.appDark || s.settings.readerTextSize !== prev.settings.readerTextSize || s.settings.readerFont !== prev.settings.readerFont) pushLook(s);
-    if (s.tabs === prev.tabs && s.live === prev.live && s.windows === prev.windows && s.peeks === prev.peeks) return;
-    for (const id of shownTabIds(s)) {
-      const tab = s.tabs[id];
-      if (tab && readable(tab.url) && !s.live[id]?.isLoading && readerState(id).url !== tab.url) schedule(id);
-    }
+    if (s.tabs !== prev.tabs || s.windows !== prev.windows || s.peeks !== prev.peeks) scheduleShown(s);
   });
   return () => {
     if (timer) clearInterval(timer);
     stopTimer();
+    stopLive();
     stop();
   };
 }

@@ -2,18 +2,23 @@ import { useBrowser, type BrowserState } from "../browser/store";
 import { useSettings, useTab } from "../browser/hooks";
 import { useKeyed } from "../browser/keyedWatch";
 import { watchTabState } from "../tabs/tabStateWatch";
+import { shownLiveOf } from "../tabs/tabLive";
 import { activeTabId, pinSection } from "../browser/model";
 import type { Tab } from "../browser/types";
 import { engineMark, type PageEngine } from "../engines/engines";
 import { isPageUnloaded } from "../pins/pinShare";
 import { muteState, type MuteState } from "../tabs/mute";
-import { useIsSleeping } from "../tabs/sleepingTabs";
+import { isSleeping, useIsSleeping } from "../tabs/sleepingTabs";
+import { splitOf } from "../splits/splits";
 
 export const ACTIVE = 1;
 export const SELECTED = 2;
 export const PLAYING = 4;
 export const LOADING = 8;
 export const FADED = 16;
+export const IN_SPLIT = 512;
+export const SLEEPING = 1024;
+export const STRUCK = 2048;
 const TAB_MUTED = 128;
 const SITE_MUTED = 256;
 const ENGINE_MARKS: Record<PageEngine, number> = { chromium: 32, webkit: 64 };
@@ -36,14 +41,21 @@ export const markedEngine = (marks: number): PageEngine | null =>
 export const useIconMarks = (tabId: string | undefined, given: number | undefined): number =>
   useKeyed(watchTabState, given === undefined ? tabId : null, () => given ?? (tabId ? iconMarks(useBrowser.getState(), tabId) : 0));
 
+const useIsPageUnloaded = (tabId: string, enabled: boolean): boolean =>
+  useKeyed(watchTabState, enabled ? tabId : null, () => (enabled ? isPageUnloaded(useBrowser.getState(), tabId) : false));
+
 export function useGrayscaleTabIcon(tabId: string): boolean {
-  const sleeping = useIsSleeping(tabId);
-  return useBrowser((s) => s.settings.grayscaleUnloadedFavicons && (sleeping || isPageUnloaded(s, tabId)));
+  const on = useSettings((s) => s.grayscaleUnloadedFavicons);
+  const sleeping = useIsSleeping(on ? tabId : "");
+  const unloaded = useIsPageUnloaded(tabId, on && !sleeping);
+  return on && (sleeping || unloaded);
 }
 
 export function useFadeTabTitle(tabId: string): boolean {
-  const sleeping = useIsSleeping(tabId);
-  return useBrowser((s) => s.settings.fadeUnloadedTabTitles && (sleeping || isPageUnloaded(s, tabId)));
+  const on = useSettings((s) => s.fadeUnloadedTabTitles);
+  const sleeping = useIsSleeping(on ? tabId : "");
+  const unloaded = useIsPageUnloaded(tabId, on && !sleeping);
+  return on && (sleeping || unloaded);
 }
 
 export const titleStruck = (strikeSleeping: boolean, sleeping: boolean, marks: number): boolean => strikeSleeping && (sleeping || !!(marks & FADED));
@@ -57,14 +69,18 @@ export function useStruckTitle(tabId: string, marks?: number): boolean {
 
 export function rowFlags(s: BrowserState, windowId: string, tabId: string): number {
   const tab = s.tabs[tabId];
-  const live = s.live[tabId];
+  const live = shownLiveOf(s, tabId);
   let flags = iconMarks(s, tabId);
   if (tab && activeTabId(s, tab.windowId, tab.profileId) === tabId) flags |= ACTIVE;
   if (s.selection[windowId]?.includes(tabId)) flags |= SELECTED;
-  if (live?.playingAudio) flags |= PLAYING;
-  if (live?.isLoading) flags |= LOADING;
+  if (live.playingAudio) flags |= PLAYING;
+  if (live.isLoading) flags |= LOADING;
   const mute = tab ? muteState(s, tab) : null;
   if (mute) flags |= mute === "site" ? SITE_MUTED : TAB_MUTED;
+  if (splitOf(s, tabId)) flags |= IN_SPLIT;
+  const sleeping = isSleeping(tabId);
+  if (sleeping) flags |= SLEEPING;
+  if (titleStruck(s.settings.strikeSleepingTabs, sleeping, flags)) flags |= STRUCK;
   return flags;
 }
 

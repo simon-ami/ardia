@@ -1,14 +1,16 @@
+import type { ConsentToken } from "./choice";
+import { consentOrNow, countFor } from "./countFor";
+
 let opens = 0;
 let noArticle = 0;
 let checked = 0;
 let withoutArticle = 0;
 
-export const noteReaderOpened = () => void opens++;
-export const noteReaderNoArticle = () => void noArticle++;
+export const noteReaderOpened = (consent?: ConsentToken | null) => countFor(consentOrNow(consent), () => void opens++);
+export const noteReaderNoArticle = (consent?: ConsentToken | null) => countFor(consentOrNow(consent), () => void noArticle++);
 
-export function noteReaderCheck(readerable: boolean) {
-  checked++;
-  if (!readerable) withoutArticle++;
+export function noteReaderCheck(readerable: boolean, consent?: ConsentToken | null) {
+  countFor(consentOrNow(consent), () => void (checked++, !readerable && withoutArticle++));
 }
 
 export function takeReaderCounts() {

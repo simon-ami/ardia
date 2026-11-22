@@ -27,7 +27,10 @@ export const emitCommand = (event: CommandEvent) => emitWebCommand(ardiaHost
   ? { ...event, windowId: ardiaHost!.bootstrap.windowId }
   : event);
 
-export const menuShortcuts = async () => linuxMenuShortcuts(useBrowser.getState().settings.shortcuts);
+export const menuShortcuts = async () => {
+  const state = useBrowser.getState();
+  return linuxMenuShortcuts(state.settings.shortcuts, state.profileOrder, state.profiles);
+};
 
 const closeToken = (request: WindowCloseRequest) => JSON.stringify(request);
 const ownWindowId = ardiaHost?.bootstrap.windowId ?? "";
@@ -91,5 +94,5 @@ if (ardiaHost && !isLinuxUtility(ownWindowId)) setManagedWindowClose((windowId, 
   return true;
 });
 export const closeWindow = (id: string): Promise<void> => takeHandedOverWindow(id) ? Promise.resolve() : closeCoordinator.closeWindow(id);
-const managedShell: Record<string, unknown> = { closeWindow, menuShortcuts, recordShortcut, cancelRecording: cancelShortcutRecording };
+const managedShell: Record<string, unknown> = { closeWindow, menuShortcuts, recordShortcut, cancelRecording: cancelShortcutRecording, mouseShortcutMonitor: async () => ({ installed: false, installs: 0 }) };
 provideNativeModuleProvider((name, method) => name === "ArdiaShell" && Object.hasOwn(managedShell, method) ? managedShell[method] : undefined);

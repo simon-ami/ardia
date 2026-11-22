@@ -5,6 +5,12 @@ chrome="$here/chrome"
 helper="$here/chrome-sandbox"
 why=""
 allow=""
+if [[ -n "${APPDIR:-}" && "$here" != "$(readlink -f -- "$APPDIR" 2>/dev/null)/lib/ardia" ]]; then
+  unset APPIMAGE APPDIR
+fi
+if [[ -z "${APPDIR:-}" ]]; then
+  unset APPIMAGE
+fi
 
 number() {
   if [[ -r "$1" ]]; then tr -dc '0-9' < "$1"; else printf '%s' "$2"; fi
@@ -46,6 +52,14 @@ setuid_ready() {
   [[ ${#mode} == 4 && "${mode:0:1}" =~ [4567] ]] || return 1
   ! findmnt -n -o OPTIONS --target "$helper" 2>/dev/null | tr , '\n' | grep -qx nosuid
 }
+
+if [[ -z "${BREAKPAD_DUMP_LOCATION:-}" ]]; then
+  for argument in "$@"; do
+    if [[ "$argument" == --user-data-dir=?* ]]; then
+      export BREAKPAD_DUMP_LOCATION="${argument#--user-data-dir=}/Crash Reports"
+    fi
+  done
+fi
 
 for argument in "$@"; do
   if [[ "$argument" == --no-sandbox ]]; then

@@ -1,6 +1,7 @@
 import type { Plugin } from "vite";
 import type { Wording } from "./credentialWording";
 import { hasMacModifiers, linuxShortcutText } from "./shortcutText";
+import { PHRASES_ONLY_WITH } from "../browser/src/state/telemetry/platformWording";
 
 export const LINUX_WORDING: readonly Wording[] = [
   {
@@ -41,43 +42,20 @@ export const LINUX_WORDING: readonly Wording[] = [
     replacements: [["`Auto · ${toDark ? \"Dark\" : \"Light\"} like your ${PLATFORM_TERMS.computer}`", "`Auto · ${toDark ? \"Dark\" : \"Light\"} like your desktop`"]],
   },
   {
-    file: "components/settings/panes/Appearance.tsx",
-    replacements: [["{ value: \"system\", title: `Follow ${PLATFORM_TERMS.os}` }", `{ value: "system", title: "Follow system" }`]],
-  },
-  {
-    file: "components/settings/rows/generalRows.ts",
-    replacements: [
-      ["description: PLATFORM_FEATURES.quitsWithLastWindow ? `Asks before ${APP} quits when you close its last window.` : `Asks before ${APP} quits with ${keyText(\"⌘Q\")}.`", "description: `Asks before ${APP} quits with Ctrl+Shift+Q.`"],
-      ["description: `Asks before ${keyText(\"⇧⌘W\")} or the close button closes its tabs.`", `description: "Asks before the close button or File › Close Window closes its tabs."`],
-      ["The window buttons stay at the top left.", "The window buttons move with the sidebar."],
-    ],
-  },
-  {
-    file: "components/settings/rows/appearanceRows.ts",
-    replacements: [
-      [
-        `"Follow macOS uses System Settings › Appearance › Show scroll bars. Thin shows slim scroll bars over the page only while you scroll, even with a mouse."`,
-        `"Follow system keeps the scroll bars your desktop shows. Thin shows slim scroll bars over the page only while you scroll, even with a mouse."`,
-      ],
-    ],
-  },
-  {
-    file: "components/settings/panes/Privacy.tsx",
-    replacements: [[`description="Built on EasyList and EasyPrivacy. Blocking happens on this Mac."`, `description="Built on EasyList and EasyPrivacy. Blocking happens on this computer."`]],
-  },
-  {
-    file: "components/settings/rows/privacyRows.ts",
-    replacements: [
-      ["title: `Zoom with ${keyText(\"⌘\")} and the mouse wheel`", `title: "Zoom with Ctrl and the mouse wheel"`],
-    ],
+    file: "components/settings/panes/General.tsx",
+    replacements: [["label: PLATFORM_FEATURES.quitsWithLastWindow ? `Quitting when you close the last window` : `Quitting with ${keyText(\"⌘Q\")}`", `label: "Quitting with Ctrl+Shift+Q"`]],
   },
   {
     file: "state/telemetry/copy.ts",
     replacements: [
+      ...[PHRASES_ONLY_WITH.freezeWatch ?? []].flat().map((phrase): [string, string] => [phrase, ""]),
+      ["how many tab changes this Mac sent,", "how many tab changes this computer sent,"],
       ["Sent to ardia.dev with a random ID made on this Mac, and kept", "Sent to ardia.dev with a random ID made on this computer, and kept"],
       [`keptOnThisMac: "Kept on this Mac"`, `keptOnThisMac: "Kept on this computer"`],
       ["browsing data removed from this Mac and", "browsing data removed from this computer and"],
       ["switched Auto-hide tabs on or off on this Mac,", "switched Auto-hide tabs on or off on this computer,"],
+      ["how many times this Mac's WebKit couldn't mute a whole page", "how many times this computer's WebKit couldn't mute a whole page"],
+      ["and how many times ⌘-scroll changed the zoom", "and how many times Ctrl-scroll changed the zoom"],
       ["more were loaded than your Mac's memory allows for", "more were loaded than your computer's memory allows for"],
       ["turned Minimalism mode on and off on this Mac, from Settings, the View menu or ⌃⌘M,", "turned Minimalism mode on and off on this computer, from Settings, the View menu or Ctrl+Super+M,"],
       ["whether macOS Increase Contrast is on", "whether the desktop's high contrast setting is on"],
@@ -94,11 +72,19 @@ export const LINUX_WORDING: readonly Wording[] = [
         "change it any time in Settings › Privacy & Security. Either way, Ardia sends one anonymous “opened today” count a day, with its version and macOS version and no persistent ID.",
         "change it any time in Settings › Privacy & Security. Either way, Ardia sends one anonymous “opened today” count a day, with its version and operating system version and no persistent ID.",
       ],
+      [
+        "After a crash: the exception type and name (never its message), and the function names where it was thrown and on the crashing thread, from this app's crash report",
+        "After a crash: the signal and its code, and for each step on the crashing thread the file it ran in (like chrome or libc.so.6) and the position inside that file, with the build IDs of Ardia's own files, read from the crash dump Chromium's crash handler keeps on this computer. Never the dump itself, which can hold page content",
+      ],
+      [
+        "plus the version that crashed, how long the process had run, the total size of its writable memory regions, and how the system ended it (its termination reason, like a signal or a code-signing kill)",
+        "plus the engine version that crashed, how long the process had run, and the signal that ended it",
+      ],
       ["A random install ID, made on this Mac once", "A random install ID, made on this computer once"],
       ["App version and build, macOS version, chip", "App version and build, operating system version, chip"],
       [
-        "Every 10 minutes Ardia notes on this Mac its tab, window and profile counts, its memory use, rough free disk space, the Mac's memory pressure, how long it has been open, and which of Ardia's own pages (like Settings or History) the tab in front was on, never a website's address. Ardia also takes that note when you open or leave one of those pages. That note is sent only with a crash report, or at the next launch after Ardia didn't quit cleanly, with whether the Mac restarted since.",
-        "Every 10 minutes Ardia notes on this computer its tab, window and profile counts, its memory use, rough free disk space, the system's memory pressure, how long it has been open, and which of Ardia's own pages (like Settings or History) the tab in front was on, never a website's address. Ardia also takes that note when you open or leave one of those pages. That note is sent only with a crash report, or at the next launch after Ardia didn't quit cleanly, with whether the computer restarted since.",
+        "Every 10 minutes Ardia notes on this Mac its tab, window and profile counts, its memory use, rough free disk space, the Mac's memory pressure, how long it has been open, and which of Ardia's own pages (like Settings or History) the tab in front was on, never a website's address. Ardia also takes that note when you open or leave one of those pages, and keeps the last 3 of those pages with how many minutes ago you were on each. That note is sent only with a crash report, or at the next launch after Ardia didn't quit cleanly, with whether the Mac restarted since.",
+        "Every 10 minutes Ardia notes on this computer its tab, window and profile counts, its memory use, rough free disk space, the system's memory pressure, how long it has been open, and which of Ardia's own pages (like Settings or History) the tab in front was on, never a website's address. Ardia also takes that note when you open or leave one of those pages, and keeps the last 3 of those pages with how many minutes ago you were on each. That note is sent only with a crash report, or at the next launch after Ardia didn't quit cleanly, with whether the computer restarted since.",
       ],
       [
         "how much memory the Mac has, how many displays and their scale, and whether the Mac decodes",
@@ -107,7 +93,7 @@ export const LINUX_WORDING: readonly Wording[] = [
       ["whether it's the first launch since the Mac started", "whether it's the first launch since the computer started"],
       ["Also at launch: the Mac's load average", "Also at launch: the system's load average"],
       ["a link no app on this Mac opens", "a link no app on this computer opens"],
-      ["Its version, macOS version, chip and Python version, with this Mac's install ID", "Its version, operating system version, chip and Python version, with this computer's install ID"],
+      ["Its version, whether it's a release or test build, and this Mac's install ID", "Its version, whether it's a release or test build, and this computer's install ID"],
       ["Leaves this Mac only as the events above", "Leaves this computer only as the events above"],
       ["whether macOS and Ardia agree that Ardia is the app in front", "whether the system and Ardia agree that Ardia is the app in front"],
       ["window was still on a screen, either though macOS reported it covered", "window was still on a screen, either though the system reported it covered"],
@@ -123,6 +109,8 @@ export const LINUX_WORDING: readonly Wording[] = [
       ["and how many times its Open System Settings button was pressed", "and how many times its settings button was pressed"],
       ["how many Dock icon clicks brought a browser window forward", "how many taskbar icon clicks brought a browser window forward"],
       ["How many times ⌘T kept a New Tab bar", "How many times Ctrl+T kept a New Tab bar"],
+      ["How many times ⇧⌘C went to a focused Developer Tools", "How many times Ctrl+Shift+C went to a focused Developer Tools"],
+      ["and how many use ⌥ without ⌘ or ⌃,", "and how many use Alt without Ctrl or Super,"],
       ["How many times ⌥↩ in the command bar", "How many times Alt+Enter in the command bar"],
       ["how often the ⌃Tab switcher opens", "how often the Ctrl+Tab switcher opens"],
       ["how many tabs were closed from it with ⌃W", "how many tabs were closed from it with Ctrl+W"],
@@ -131,6 +119,10 @@ export const LINUX_WORDING: readonly Wording[] = [
       ["closing the Top App in front (⌘W, or a middle click on it)", "closing the Top App in front (Ctrl+W, or a middle click on it)"],
       ["Bringing your last window back from the Dock or at launch", "Bringing your last window back from the taskbar or at launch"],
       ["How many times ⌘Y asked for the History", "How many times Ctrl+Y asked for the History"],
+      [
+        "summed up once an hour, and when Ardia can't post one or the system refuses it: how long its title and message were, whether it asked for an icon and whether one was sent, what happened to the icon (one of a few fixed outcomes, such as it failed to download or the system refused it, with the system's error code for that), that it came through Ardia's notification page script, whether posting failed in Ardia itself and the kind of error it was, and the error code the system gave with which of a few known system error families it came from. Never the notification's text or which site",
+        "summed up once an hour. Never the notification's text or which site",
+      ],
     ],
   },
   {
@@ -166,6 +158,10 @@ export const LINUX_WORDING: readonly Wording[] = [
       [
         "`${NOT_BROUGHT} macOS didn't allow Ardia to ask Dia for them. Allow it in System Settings › Privacy & Security › Automation, then import again.`",
         "`${NOT_BROUGHT} Ardia wasn't allowed to ask Dia for them.`",
+      ],
+      [
+        "\"Dia's Favorites weren't imported: they're in its sidebar file, which needs the keychain access you skipped.\"",
+        "\"Dia's Favorites weren't imported: they're in its sidebar file, which needs the keyring access you skipped.\"",
       ],
     ],
   },

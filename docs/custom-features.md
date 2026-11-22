@@ -29,7 +29,7 @@ Use these fields; omit optional fields when empty:
 - Behavior: the fork's required differences, important edge cases, and decisions that affect future changes.
 - Code/checks: a few entry points, named regression tests, and a short manual check when affected.
 - Open/Replacement, only when applicable: unresolved behavior or a concrete upstream comparison, its target
-  tag/commit, differences, and Simon's removal decision. No field means not assessed, not proof of no replacement.
+  tag/commit, differences, and the user's removal decision. No field means not assessed, not proof of no replacement.
 
 Rewrite affected statements instead of appending follow-ups. Remove superseded values and resolved issues.
 Keep accepted design values when they define behavior; omit incidental screenshot measurements.
