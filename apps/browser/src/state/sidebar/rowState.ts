@@ -41,14 +41,21 @@ export const markedEngine = (marks: number): PageEngine | null =>
 export const useIconMarks = (tabId: string | undefined, given: number | undefined): number =>
   useKeyed(watchTabState, given === undefined ? tabId : null, () => given ?? (tabId ? iconMarks(useBrowser.getState(), tabId) : 0));
 
+const useIsPageUnloaded = (tabId: string, enabled: boolean): boolean =>
+  useKeyed(watchTabState, enabled ? tabId : null, () => (enabled ? isPageUnloaded(useBrowser.getState(), tabId) : false));
+
 export function useGrayscaleTabIcon(tabId: string): boolean {
-  const sleeping = useIsSleeping(tabId);
-  return useBrowser((s) => s.settings.grayscaleUnloadedFavicons && (sleeping || isPageUnloaded(s, tabId)));
+  const on = useSettings((s) => s.grayscaleUnloadedFavicons);
+  const sleeping = useIsSleeping(on ? tabId : "");
+  const unloaded = useIsPageUnloaded(tabId, on && !sleeping);
+  return on && (sleeping || unloaded);
 }
 
 export function useFadeTabTitle(tabId: string): boolean {
-  const sleeping = useIsSleeping(tabId);
-  return useBrowser((s) => s.settings.fadeUnloadedTabTitles && (sleeping || isPageUnloaded(s, tabId)));
+  const on = useSettings((s) => s.fadeUnloadedTabTitles);
+  const sleeping = useIsSleeping(on ? tabId : "");
+  const unloaded = useIsPageUnloaded(tabId, on && !sleeping);
+  return on && (sleeping || unloaded);
 }
 
 export const titleStruck = (strikeSleeping: boolean, sleeping: boolean, marks: number): boolean => strikeSleeping && (sleeping || !!(marks & FADED));

@@ -1,6 +1,9 @@
+import { systemInfo } from "../../platform/app";
 import { useBrowser, type BrowserState } from "../browser/store";
 
 const CONTROL_KEY = "cliControl";
+
+export const isPersonalControlBuild = () => systemInfo().bundleId === "dev.simon.ardia.personal";
 
 export const programControlOn = (s: Pick<BrowserState, "settings">) => s.settings.cliControl;
 

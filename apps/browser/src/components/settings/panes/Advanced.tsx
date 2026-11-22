@@ -2,7 +2,7 @@ import { useState } from "react";
 import { View } from "react-native";
 import { describeCommandInstall, installCommandInBackground, useCommandInstall } from "../../../state/app/linuxCommandInstall";
 import { useControlServer } from "../../../state/app/programControl";
-import { programControlOn, setControlFromSettings, setProgramControl } from "../../../state/app/programControlSetting";
+import { isPersonalControlBuild, programControlOn, setControlFromSettings, setProgramControl } from "../../../state/app/programControlSetting";
 import { usePluginsWithPrograms, usePluginPrograms } from "../../../state/plugins/hooks";
 import { useProgramRegistry } from "../../../state/plugins/programRegistry";
 import { canRelink, relinkPrograms } from "../../../state/plugins/actions";
@@ -10,7 +10,6 @@ import type { ProgramsState } from "../../../state/plugins/store";
 import { goToSettingsPane, type SettingsPlace } from "../../../state/settings/settingsWindows";
 import { useSettings } from "../../../state/browser/hooks";
 import { updateSettings } from "../../../state/settings/actions";
-import { systemInfo } from "../../../platform/app";
 import { openChromeSettings } from "../../../state/pages/urls";
 import type { BatterySaverWhen, Settings } from "../../../state/settings/settings";
 import { keepSiteActive, stopKeepingSiteActive, type MemorySaverMode } from "../../../state/tabs/memorySaver";
@@ -218,7 +217,7 @@ function ProgramsRows() {
 }
 
 function CommandLineSection() {
-  const personal = PLATFORM_FEATURES.plugins && systemInfo().bundleId === "dev.simon.ardia.personal";
+  const personal = PLATFORM_FEATURES.plugins && isPersonalControlBuild();
   const viaPlugin = PLATFORM_FEATURES.plugins && !personal;
   const on = useSettings((settings) => programControlOn({ settings }));
   const install = useCommandInstall();

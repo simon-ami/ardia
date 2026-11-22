@@ -9,58 +9,60 @@ const { parseWindowsShortcut, windowsDefaultKeys, windowsModifiers, formatWindow
 const macSources = staticShortcutSources();
 const mac = (overrides) => resolveShortcuts(macSources, overrides);
 const hints = (resolved, id) => (resolved.bindings.get(id) ?? []).map(formatShortcut);
+const STEP = { nextTab: ["\t", "control"], previousTab: ["\t", "control", "shift"] };
 const SWITCHER = { "tabSwitcher:forward": ["\t", "control"], "tabSwitcher:backward": ["\t", "control", "shift"] };
 
 const pick = (overrides, preset, resolve = mac) => ctrlTabOverrides(overrides, ctrlTabCombos(resolve(overrides)), preset, resolve(overrides).defaultsOf);
 
-test("the defaults step through tabs: ⌃⇥ is Next Tab and ⌃⇧⇥ Previous Tab", () => {
-  assert.equal(ctrlTabChoiceOf(mac({})), "step");
-  assert.ok(hints(mac({}), "nextTab").includes("⌃⇥"));
-  assert.deepEqual(hints(mac({}), "tabSwitcher:forward"), []);
+test("the defaults open the recent tabs switcher: ⌃⇥ is Tab Switcher and Next Tab keeps its other keys", () => {
+  assert.equal(ctrlTabChoiceOf(mac({})), "switcher");
+  assert.ok(hints(mac({}), "tabSwitcher:forward").includes("⌃⇥"));
+  assert.ok(!hints(mac({}), "nextTab").includes("⌃⇥"));
+  assert.ok(hints(mac({}), "nextTab").includes("⇧⌘]"));
 });
 
-test("⌃⇥ and ⌃⇧⇥ on the tab switcher read as the recent tabs switcher, and Next Tab keeps its other keys", () => {
-  const resolved = mac(SWITCHER);
-  assert.equal(ctrlTabChoiceOf(resolved), "switcher");
-  assert.ok(!hints(resolved, "nextTab").includes("⌃⇥"));
-  assert.ok(hints(resolved, "nextTab").includes("⇧⌘]"));
+test("⌃⇥ and ⌃⇧⇥ on Next/Previous Tab read as stepping through tabs", () => {
+  const resolved = mac(STEP);
+  assert.equal(ctrlTabChoiceOf(resolved), "step");
+  assert.ok(hints(resolved, "nextTab").includes("⌃⇥"));
+  assert.deepEqual(hints(resolved, "tabSwitcher:forward"), []);
 });
 
-test("anything else is custom: one direction only, a key of your own on Next Tab, or ⌃⇥ set for another command", () => {
-  assert.equal(ctrlTabChoiceOf(mac({ "tabSwitcher:forward": ["\t", "control"] })), "custom");
-  assert.equal(ctrlTabChoiceOf(mac({ nextTab: ["j", "command"] })), "custom");
+test("anything else is custom: one direction only, a key of your own on Tab Switcher, or ⌃⇥ set for another command", () => {
+  assert.equal(ctrlTabChoiceOf(mac({ nextTab: ["\t", "control"] })), "custom");
+  assert.equal(ctrlTabChoiceOf(mac({ "tabSwitcher:forward": ["j", "command"] })), "custom");
   assert.equal(ctrlTabChoiceOf(mac({ newTab: ["\t", "control"] })), "custom");
-  assert.equal(ctrlTabChoiceOf(mac({ ...SWITCHER, duplicateTab: ["\t", "control"] })), "custom");
-  assert.equal(ctrlTabChoiceOf(mac({ nextTab: [""] })), "custom");
+  assert.equal(ctrlTabChoiceOf(mac({ ...STEP, duplicateTab: ["\t", "control"] })), "custom");
+  assert.equal(ctrlTabChoiceOf(mac({ "tabSwitcher:forward": [""] })), "custom");
 });
 
-test("picking the switcher binds both directions and keeps your unrelated shortcuts", () => {
-  const next = pick({ closeTab: ["t", "command"] }, "switcher");
-  assert.deepEqual(next, { closeTab: ["t", "command"], ...SWITCHER });
-  assert.equal(ctrlTabChoiceOf(mac(next)), "switcher");
+test("picking step through tabs binds both directions and keeps your unrelated shortcuts", () => {
+  const next = pick({ closeTab: ["t", "command"] }, "step");
+  assert.deepEqual(next, { closeTab: ["t", "command"], ...STEP });
+  assert.equal(ctrlTabChoiceOf(mac(next)), "step");
 });
 
-test("picking step through tabs undoes the switcher and keeps the switcher's own other keys", () => {
-  assert.deepEqual(pick(SWITCHER, "step"), {});
-  const own = { "tabSwitcher:forward": ["\t", "option"] };
-  assert.deepEqual(pick({ ...own, "tabSwitcher:backward": ["\t", "control", "shift"] }, "step"), own);
-  assert.equal(ctrlTabChoiceOf(mac(pick(SWITCHER, "step"))), "step");
+test("picking the switcher undoes step through tabs and keeps Next Tab's own other keys", () => {
+  assert.deepEqual(pick(STEP, "switcher"), {});
+  const own = { nextTab: ["\t", "option"] };
+  assert.deepEqual(pick({ ...own, previousTab: ["\t", "control", "shift"] }, "switcher"), own);
+  assert.equal(ctrlTabChoiceOf(mac(pick(STEP, "switcher"))), "switcher");
 });
 
 test("only the press takes ⌃⇥ from another command or a custom Next Tab, so the picked card is what you get", () => {
   const custom = { newTab: ["\t", "control"], nextTab: ["j", "command"], closeTab: ["w", "command"] };
   assert.equal(ctrlTabChoiceOf(mac(custom)), "custom");
   const stepped = pick(custom, "step");
-  assert.deepEqual(stepped, { closeTab: ["w", "command"] });
+  assert.deepEqual(stepped, { closeTab: ["w", "command"], ...STEP });
   assert.equal(ctrlTabChoiceOf(mac(stepped)), "step");
   const switched = pick(custom, "switcher");
-  assert.deepEqual(switched, { nextTab: ["j", "command"], closeTab: ["w", "command"], ...SWITCHER });
+  assert.deepEqual(switched, { nextTab: ["j", "command"], closeTab: ["w", "command"] });
   assert.equal(ctrlTabChoiceOf(mac(switched)), "switcher");
 });
 
 test("picking is idempotent", () => {
-  assert.deepEqual(pick(pick({}, "switcher"), "switcher"), SWITCHER);
-  assert.deepEqual(pick(pick({}, "step"), "step"), {});
+  assert.deepEqual(pick(pick({}, "step"), "step"), STEP);
+  assert.deepEqual(pick(pick({}, "switcher"), "switcher"), {});
 });
 
 const windowsSources = macSources.map((source) => ({ ...source, keys: windowsDefaultKeys(source.id).map(parseWindowsShortcut) }));
@@ -70,10 +72,10 @@ test("on Windows the same presets use Ctrl+Tab and Ctrl+Shift+Tab", () => {
   const combos = ctrlTabCombos(windows({}));
   assert.equal(formatWindowsShortcut(combos.forward), "Ctrl+Tab");
   assert.equal(formatWindowsShortcut(combos.backward), "Ctrl+Shift+Tab");
-  assert.equal(ctrlTabChoiceOf(windows({})), "step");
-  const switched = pick({}, "switcher", windows);
-  assert.equal(ctrlTabChoiceOf(windows(switched)), "switcher");
-  assert.equal(ctrlTabChoiceOf(windows(pick(switched, "step", windows))), "step");
+  assert.equal(ctrlTabChoiceOf(windows({})), "switcher");
+  const stepped = pick({}, "step", windows);
+  assert.equal(ctrlTabChoiceOf(windows(stepped)), "step");
+  assert.equal(ctrlTabChoiceOf(windows(pick(stepped, "switcher", windows))), "switcher");
 });
 
 const LINUX_KEYS = { nextTab: ["⇧⌘]", "⌘⇟", "⌥⌘↓"], previousTab: ["⇧⌘[", "⌘⇞", "⌥⌘↑"], "tabSwitcher:forward": ["⌘⇥"], "tabSwitcher:backward": ["⇧⌘⇥"] };
@@ -90,12 +92,12 @@ test("on Linux, where Ctrl+Tab opens the switcher by default and Ctrl is stored 
 });
 
 test("Show in Shortcuts searches for the chord that differs from both cards", () => {
-  assert.equal(formatShortcut(ctrlTabCustomTarget(mac({ "tabSwitcher:backward": ["\t", "control", "shift"] })).combo), "⌃⇧⇥");
+  assert.equal(formatShortcut(ctrlTabCustomTarget(mac({ previousTab: ["\t", "control", "shift"] })).combo), "⌃⇧⇥");
   assert.equal(formatShortcut(ctrlTabCustomTarget(mac({ newTab: ["\t", "control"] })).combo), "⌃⇥");
 });
 
-test("with Next Tab cleared, no command holds ⌃⇥, so Show in Shortcuts searches for Next Tab by name", () => {
-  assert.deepEqual(ctrlTabCustomTarget(mac({ nextTab: [""] })), { command: "nextTab" });
+test("with Tab Switcher cleared, no command holds ⌃⇥, so Show in Shortcuts searches for Tab Switcher by name", () => {
+  assert.deepEqual(ctrlTabCustomTarget(mac({ "tabSwitcher:forward": [""] })), { command: "tabSwitcher:forward" });
   assert.deepEqual(ctrlTabCustomTarget(linux({ "tabSwitcher:forward": [""] })), { command: "tabSwitcher:forward" });
-  assert.equal(ctrlTabCustomQuery({ settings: { shortcuts: { nextTab: [""] } }, profileOrder: [] }), "Next Tab");
+  assert.equal(ctrlTabCustomQuery({ settings: { shortcuts: { "tabSwitcher:forward": [""] } }, profileOrder: [] }), "Tab Switcher (forward)");
 });

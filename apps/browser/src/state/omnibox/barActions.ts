@@ -94,7 +94,7 @@ const DEFS: ActionDef[] = [
   {
     command: "toggleTabLayout",
     title: (c) => (layoutSwitchesTo(c) === "top" ? "Show Tabs Across the Top" : "Show Tabs in Sidebar"),
-    icon: (c) => (layoutSwitchesTo(c) === "top" ? "menubar.rectangle" : c.s.settings.sidebarSide === "right" ? "sidebar.right" : "sidebar.left"),
+    icon: (c) => (layoutSwitchesTo(c) === "top" ? "rectangle.topthird.inset.filled" : c.s.settings.sidebarSide === "right" ? "sidebar.right" : "sidebar.left"),
     keywords: ["tab layout", "top tabs", "tabs on top", "tabs across the top", "horizontal tabs", "horizontal row", "tab bar", "tab strip", "vertical tabs", "vertical sidebar", "sidebar tabs", "tabs in sidebar"],
   },
   { command: "toggleSidebar", keywords: ["toggle sidebar", "hide sidebar", "show sidebar", "focus mode"] },
