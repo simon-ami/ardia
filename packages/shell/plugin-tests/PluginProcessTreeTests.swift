@@ -130,7 +130,8 @@ final class PluginResponsibilityTests: XCTestCase {
     posix_spawnattr_setflags(&attributes, Int16(POSIX_SPAWN_SETPGROUP))
     XCTAssertTrue(PluginProcessTree.disclaim(&attributes))
     var helper: pid_t = 0
-    let argv = ["/bin/sh", "-c", helperScript, "helper", script, marker].map { strdup($0) } + [nil]
+    let args = ["/bin/sh", "-c", helperScript, "helper", script, marker]
+    let argv: [UnsafeMutablePointer<CChar>?] = args.map { strdup($0) } + [nil]
     defer { argv.forEach { free($0) } }
     let spawned = posix_spawn(&helper, "/bin/sh", nil, &attributes, argv, environ)
     guard spawned == 0, helper > 0 else { throw SpawnFailed(status: spawned) }
@@ -167,7 +168,8 @@ final class PluginFamilyTests: XCTestCase {
     posix_spawnattr_setflags(&attributes, Int16(POSIX_SPAWN_SETPGROUP))
     _ = PluginProcessTree.disclaim(&attributes)
     var pid: pid_t = 0
-    let argv = ["/usr/bin/python3", "-c", script, argument].map { strdup($0) } + [nil]
+    let args = ["/usr/bin/python3", "-c", script, argument]
+    let argv: [UnsafeMutablePointer<CChar>?] = args.map { strdup($0) } + [nil]
     defer { argv.forEach { free($0) } }
     let spawned = posix_spawn(&pid, "/usr/bin/python3", nil, &attributes, argv, environ)
     guard spawned == 0, pid > 0 else { throw SpawnFailed(status: spawned) }
