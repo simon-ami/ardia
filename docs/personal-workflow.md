@@ -5,7 +5,7 @@ Use task branches in this checkout. Preserve unrelated work. Do not use worktree
 Run tools, dependency installs, builds, checks, installation, and cleanup yourself. T3 buttons are optional.
 Use the existing build locks. Keep test instances hidden and use scratch data.
 
-Local commits are authorized. Wait for Simon's required manual tests before committing.
+Local commits are authorized. Wait for the user's required manual tests before committing.
 Ask before pushing, opening PRs, or removing custom feature code. Reuse approval already given for this task.
 Do not publish releases or deploy sites. Keep the official app and its profile unchanged.
 Write brief reports and collaboration text in roughly 80% ASD-STE100. State both what changed and how.
@@ -19,19 +19,19 @@ For copies, name what stays shared and what becomes independent.
    for an upstream update. Use source diffs and relevant PR metadata to narrow investigation.
 3. Select the change and check engine availability before spending time on implementation or building.
    Do not replace a missing engine with an older one or start a full Chromium build without discussing its cost.
-4. Decide the smallest useful checks and whether Simon needs a manual test. Do not repeat setup checks
+4. Decide the smallest useful checks and whether the user needs a manual test. Do not repeat setup checks
    whose inputs and behavior are unchanged.
 
 ## Upstream update
 
-1. Fetch release metadata and refs. Select the newest published stable or nightly release by version order.
-   Stable wins over nightlies of the same version. Do not use `main` unless Simon explicitly requests it.
+1. Fetch release metadata and refs. Select the newest published stable release by version order.
+   Do not use nightlies or `main` unless the user explicitly requests them.
    Resolve the tag to a full commit; record both. Ask if release order is ambiguous.
 2. Compare the target with the fork and active feature requirements. Check relevant upstream code and PRs
    for merged or alternative implementations. Search by behavior, not only titles.
    Untouched code and unrelated PRs do not require exhaustive rereading.
    Prefer upstream when it provides the same value or more. For partial coverage, use upstream as the base
-   and adapt only the missing behavior or styling when practical. Prepare that variant for Simon to test
+   and adapt only the missing behavior or styling when practical. Prepare that variant for the user to test
    before finalizing replacements or retiring custom features.
 3. Merge on an update branch. Keep newer fork commits. Resolve mechanical conflicts yourself.
    Ask when a conflict changes intended behavior. Ask before removing custom code, even if upstream replaces it.
@@ -68,10 +68,10 @@ For copies, name what stays shared and what becomes independent.
 | CLI only | CLI checks; reuse the unchanged app binary when possible. |
 
 Follow this workflow and [the repository testing policy](testing.md#whats-kept-and-why) when choosing checks.
-Do not invoke a separate testing skill unless Simon explicitly asks. Prefer existing app exercises and affected
+Do not invoke a separate testing skill unless the user explicitly asks. Prefer existing app exercises and affected
 regression tests. Add tests for data loss, privacy, integration boundaries, or a demonstrated regression that is
 hard to catch by eye. Do not add tests that only restate implementation details or visual constants.
-For small UI changes, a hidden scratch launch plus Simon's manual interaction and appearance check is sufficient
+For small UI changes, a hidden scratch launch plus the user's manual interaction and appearance check is sufficient
 alongside typecheck and affected existing tests. Automate repeated E2E checks when their value justifies upkeep.
 Use golden fixtures only with independently reviewed expected results; never accept regenerated output blindly.
 
@@ -90,7 +90,7 @@ which can be the Release build when that is the shortest useful route.
 1. Run available source-level checks before building. Run `python3 scripts/personal/build-app.py`.
    It prepares the matching engine, reuses a recorded unchanged
    Release or builds one, prepares the matching CLI without activating it, and signs the candidate with
-   Simon's existing certificate. During an uncommitted update merge, it matches the staged engine tree;
+   the existing personal signing certificate. During an uncommitted update merge, it matches the staged engine tree;
    unstaged or untracked engine files block prebuilt lookup. It bundles JavaScript; the delivered app never depends on Metro.
    If needed, request the signing password through the private secret tool. Never put it in logs, arguments,
    Git, or a persistent script. Use one private password file within the task; remove that temporary file when done.
@@ -99,11 +99,11 @@ which can be the Release build when that is the shortest useful route.
    `--sign-only` is only for a recorded build whose inputs and program files still match.
    After candidate tests, unregister that build with `lsregister -u` and register the installed personal app
    with `lsregister -f`, unless installing immediately. Do not leave build copies as browser-handler candidates.
-3. Give Simon only the required manual steps and expected results. Use a scratch profile for candidate tests.
+3. Give the user only the required manual steps and expected results. Use a scratch profile for candidate tests.
    If real-profile behavior needs validation, install with a backup first and test it there. Never run the build
    and installed app against the personal profile at the same time. Do not launch a candidate on real data
    before taking a backup. The official profile is never the routine test source.
-4. Let Simon keep using the installed app during preparation. Ask him to quit it only for installation.
+4. Let the user keep using the installed app during preparation. Ask the user to quit it only for installation.
    Run `python3 scripts/personal/install-app.py` once checks allow installation. It validates the recorded
    candidate, snapshots the personal profile and preferences, preserves the current app and CLI reference,
    and installs the paired app and CLI. Do not rebuild a tested candidate just to install it.
@@ -166,7 +166,7 @@ Monitor checks through T3 when merging is pending. Do not call an update integra
 After merge, fast-forward local `main`; no rebuild is needed if program inputs are unchanged.
 
 If a deployed update fails, stop and inspect. Do not silently downgrade a potentially migrated profile.
-On Simon's request, stop the personal app, preserve the failed current state, and restore the app, profile,
+On user request, stop the personal app, preserve the failed current state, and restore the app, profile,
 preferences, and CLI reference from the same update snapshot. Restoring only an old executable is insufficient.
 Snapshots and the original migration backup stay private and out of Git. Do not delete them automatically.
 
@@ -174,14 +174,10 @@ Snapshots and the original migration backup stay private and out of Git. Do not 
 
 Preserve README fork notice `2286d63b`, PR CI workflow `84beb05f`, and the personal-build feature record.
 Starting point after setup: fork `main` at `9d18a24e`.
-The installed update targets `v0.2.47-nightly.9`, commit `c37a870640a8ce5c569322535f9fbf82fcaecaa0`.
-The signed app uses Chromium `158.0.8127.36`, engine key `367b6b04ea642e1afcb73365abd2f895fba1c7be`.
-The paired CLI and managed skill use upstream `0.4.0` through `ardia-personal`. All eight custom features remain active.
-CLI checks passed for the personal config path, `windows`, `methods`, and installation.
-The CLI update snapshot is `20261121-121454-e15e7d1e`.
-Typechecks, 145 focused browser checks, and hidden candidate checks passed. The candidate exercised native unloading,
-MRU selection, switcher closing and sleeping filtering, settings restoration, lazy startup, and the personal CLI socket.
-The Linux host suite still records its upstream Picture in Picture consent TODO. The native plugin responsibility test
-passed from scratch after macOS denied its disclaimed subprocess access to the checkout under Documents.
-Installation snapshot: `20261120-233540-0fe4a2e4`. Evidence: `apps/browser/build-personal-signed/update-0.2.47-nightly.9/`.
-Simon confirmed restored tabs, an existing login, Control-Tab previews, and Unload Tab with reload on selection.
+The installed update targets `v0.2.48`, commit `6b1bcbaca49e766a3be05c6e7c52d57a69c0bd0d`.
+The signed app uses Chromium `158.0.8127.36`, engine key `f910adbf8042b7c3f297ce0dd352a35f85aef2c4`.
+The paired CLI and managed skill use upstream `0.6.0` through `ardia-personal`. All eight custom features remain active.
+Typechecks (11 packages + Linux typecheck and module graph), 203 focused browser checks, personal engine/lifecycle/path checks,
+and a hidden candidate launch passed.
+Installation snapshot: `20261122-232006-197c1da7`.
+The user confirmed restored tabs, an existing login, Control-Tab previews, Unload Tab with reload on selection, and Peek scrolling.

@@ -1,7 +1,7 @@
 # Optional grayscale favicons for unloaded tabs
 
 - Status: active; behavior and grouped settings manually validated.
-- Source: Simon's request, inspired by [upstream PR #616](https://github.com/mantrakp04/ardia/pull/616);
+- Source: user request, inspired by [upstream PR #616](https://github.com/mantrakp04/ardia/pull/616);
   implemented in [fork PR #6](https://github.com/simon-ami/ardia/pull/6).
 - Setting: Tabs → Unloaded tab appearance → Grayscale favicons
   (`grayscaleUnloadedFavicons`), synced, default off.

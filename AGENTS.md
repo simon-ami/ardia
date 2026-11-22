@@ -80,7 +80,7 @@ For the architecture and the test tooling, read `docs/agent-brief.md`.
   whatever it needs from the browser becomes a public extension point any plugin can use, never a private hook.
   Dia's AI rows in `docs/dia-feature-parity.md` stay ⏸ until the plugin ships them.
   The phone app has two exceptions, documented in `docs/phone.md`. Browse for Me uses the phone's model, cited
-  excerpts, or the user's connected ChatGPT plan. Pinch to Summarize reads the open page. iPhone uses Apple
+  excerpts, or the user's connected ChatGPT plan; its Talk to Me voice is Phonon, on device (owner approved). Pinch to Summarize reads the open page. iPhone uses Apple
   Intelligence or excerpts on-device. Android uses Gemini Nano or excerpts on-device by default, and can use
   the user's connected ChatGPT plan when they choose it in Pinch to Summarize settings.
 
@@ -234,7 +234,7 @@ version pinned in `apps/browser/official-plugins.json` as the Command Line plugi
 `extras/` the add-ons (the Raycast extension). Ardia's own source files are Apache-2.0; the app as distributed is
 GPL-3.0, because its engine carries Helium's patches (`NOTICE`).
 
-## Simon's personal fork
+## Personal fork
 
 For `simon-ami/ardia`, [the personal workflow](docs/personal-workflow.md) overrides conflicting upstream
 instructions above. Read it for updates, features, commits, and PRs. Track custom behavior in

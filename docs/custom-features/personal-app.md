@@ -7,7 +7,7 @@
   `dev.simon.ardia.personal`, with separate profile/configuration and `ardia-personal` runtime/credential service.
   Keep the official app and CLI unchanged. Disable the upstream updater/CLI installer.
   Skill commands, references, and tool permissions use `ardia-personal`; preserve this during merges and refreshes.
-- Reuse Simon's signing identity. Permit shared `Ardia Safe Storage` only after validating the personal
+- Reuse the existing personal signing identity. Permit shared `Ardia Safe Storage` only after validating the personal
   signature and sealed files. Keep mock storage for scratch/ad hoc builds and real-profile debugging restrictions.
 - Register HTTP/HTTPS without changing the chosen default. Reject stale builds; activate paired app/CLI versions.
   Snapshot the stopped personal profile/preferences first. Failed backup blocks installation; failed activation

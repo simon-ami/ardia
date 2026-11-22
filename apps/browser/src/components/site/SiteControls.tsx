@@ -14,12 +14,12 @@ import { currentEngineProfile } from "../../state/browser/current";
 import { useMuteState } from "../../state/tabs/hooks";
 import { openFind } from "../../state/find/actions";
 import { updateSettings } from "../../state/settings/actions";
-import { useEngineRule, usePageEngine, useRecommendedEngine, useStreamingSite } from "../../state/engines/hooks";
+import { useCanSwitchEngine, useEngineRule, usePageEngine, useRecommendedEngine, useStreamingSite } from "../../state/engines/hooks";
 import { useSettings, useTab } from "../../state/browser/hooks";
 import { isIncognitoProfile, tabLabel } from "../../state/browser/model";
 import { ENGINE_NAMES, ENGINE_SYMBOLS, offersEngineChoice, otherEngine } from "../../state/engines/engines";
 import { openPageIn, togglePageEngine } from "../../state/engines/actions";
-import { Box, Divider, MenuRow, MenuSeparator, PANEL, PanelHeader, Popover, PopoverValue, space, Toggle, usePopoverPresence } from "../ui";
+import { Box, Divider, MenuRow, MenuSeparator, PANEL, PanelHeader, Popover, PopoverValue, space, Toggle } from "../ui";
 import { Favicon } from "../favicon/Favicon";
 import { patchPage, setPopover, usePage } from "../../state/tabs/pageState";
 import { dismissPopoverByPress } from "../../state/tabs/popoverDismiss";
@@ -46,13 +46,7 @@ import { ALL_UNREAD_TITLE, canChooseSiteUnread, isUnreadSiteHidden, setSiteUnrea
 type Expanded = "connection" | "more" | null;
 type Blocker = { enabled: boolean; allowed: boolean };
 
-export function SiteControls({ tabId, open, right, left, top }: { tabId: string; open: boolean; right?: number; left?: number; top: number }) {
-  const presence = usePopoverPresence(open);
-  if (!presence.shown) return null;
-  return <SiteControlsPanel tabId={tabId} right={right} left={left} top={top} closing={presence.closing} onClosed={presence.onClosed} />;
-}
-
-function SiteControlsPanel({
+export function SiteControlsPanel({
   tabId,
   right,
   left,
@@ -90,10 +84,11 @@ function SiteControlsPanel({
   const pageEngine = usePageEngine(tabId);
   const webkitPage = pageEngine === "webkit";
   const permissionList = sitePermissionsFor(pageEngine);
-  const sound = { siteMuted: useMuteState(tabId) === "site", soundBlocked: !webkitPage && settings?.sound?.value === "block" };
+  const sound = { siteMuted: useMuteState(tabId) === "site", soundBlocked: settings?.sound?.value === "block" };
   const engineRule = useEngineRule(url);
   const recommendedEngine = useRecommendedEngine(url);
   const streamingSite = useStreamingSite(url);
+  const switchable = useCanSwitchEngine(url);
   const recommendedTitle = streamingSite ? `Recommended (${ENGINE_NAMES[recommendedEngine]})` : `Default (${ENGINE_NAMES[recommendedEngine]})`;
 
   useEffect(() => {
@@ -241,7 +236,7 @@ function SiteControlsPanel({
             {DEVELOPER_BAR_IN_CORE && canChooseDeveloperMode(url) && !privatePage ? (
               <SettingRow icon="hammer" title="Developer Mode" value={developerMode ? "On" : "Off"} on={developerMode} onPress={() => setDeveloperMode(url, !developerMode)} />
             ) : null}
-            {engineChoice ? <SettingRow icon={ENGINE_SYMBOLS[pageEngine]} title="Opens in" value={opensIn} on={!!engineRule} onPress={() => void pickEngine()} /> : null}
+            {engineChoice && switchable ? <SettingRow icon={ENGINE_SYMBOLS[pageEngine]} title="Opens in" value={opensIn} on={!!engineRule} onPress={() => void pickEngine()} /> : null}
             {shownPermissions.map((p) => (
               <SettingRow
                 key={p.type}
@@ -273,7 +268,7 @@ function SiteControlsPanel({
             <MenuSeparator />
             <MenuRow icon="plus.magnifyingglass" title="Zoom" accessory={<ZoomStepper tabId={tabId} zoom={tab.zoom} />} />
             {origin && !castTile ? <MenuRow icon="tv.and.mediabox" title="Cast…" onPress={cast} /> : null}
-            {engineChoice && origin ? (
+            {engineChoice && origin && switchable ? (
               <MenuRow
                 icon={ENGINE_SYMBOLS[otherEngine(pageEngine)]}
                 title={`Open Page in ${ENGINE_NAMES[otherEngine(pageEngine)]}`}

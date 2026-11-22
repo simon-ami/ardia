@@ -22,8 +22,12 @@ test("a pressed glyph dips a little and comes back without a bounce", () => {
   assert.match(source("./motion.ts"), /toValue: pressed \? pressedScale : 1, \.\.\.springs\.snappy/);
 });
 
-test("sidebar rows, folder headers and tiles hold still under a press unless pressMotion is bounce", () => {
-  for (const file of ["TabPressArea.tsx", "GroupBlock.tsx", "LiveFolderBlock.tsx", "LiveItemRow.tsx", "FolderPanel.tsx", "FolderTile.tsx"]) {
+test("tab rows and tiles answer a press with their pressed fill and never squish", () => {
+  for (const file of ["TabPressArea.tsx", "TabRow.tsx"]) assert.doesNotMatch(source(`../sidebar/${file}`), /usePressScaleMotion\(resettable|useSquish|Squish\b/, file);
+});
+
+test("folder headers and folder tiles hold still under a press unless pressMotion is bounce", () => {
+  for (const file of ["GroupBlock.tsx", "LiveFolderBlock.tsx", "LiveItemRow.tsx", "FolderPanel.tsx", "FolderTile.tsx"]) {
     const text = source(`../sidebar/${file}`);
     assert.doesNotMatch(text, /usePressScaleMotion|PressScale/, file);
     assert.match(text, /useSquish\(/, `${file} reaches a scale only through useSquish, which stays still unless pressMotion is bounce`);
@@ -68,6 +72,16 @@ test("hover cards, toasts and reload only fade or change state, with no grow, sl
   assert.doesNotMatch(source("../toolbar/tokens.ts"), /pressScale/);
 });
 
+test("plugin toolbar buttons press like Ardia's own icon buttons: a pressed fill, with no squish in either press motion", () => {
+  const plugin = source("../plugins/PluginToolbarItems.tsx");
+  const item = plugin.slice(plugin.indexOf("function ToolbarItemButton"), plugin.indexOf("function badgeOf"));
+  assert.ok(item.length > 0);
+  assert.doesNotMatch(plugin, /usePressScaleMotion|usePressMotion|buttonMotion|Animated/, "no press scale reaches a plugin's toolbar glyph");
+  assert.match(item, /<Button\s+variant="icon"\s+look="extension"/);
+  assert.match(item, /\bicon=\{icon\}/, "the glyph is drawn by the icon button itself, as Ardia's own toolbar buttons are");
+  assert.doesNotMatch(item, /onPressIn|onPressOut/);
+});
+
 test("the nightly.6 press bounce is opt-in through config.json's pressMotion, and still by default", () => {
   assert.equal(SETTING_SPECS.pressMotion.default, "still");
   assert.equal(SETTING_SPECS.pressMotion.synced, false);
@@ -97,7 +111,6 @@ test("pressMotion bounce restores nightly.6's dips, springs and shortest visible
 });
 
 test("a row being renamed doesn't squish, so a pressMotion change can't remount its rename field", () => {
-  assert.match(source("../sidebar/TabRow.tsx"), /<TabPressArea windowId=\{windowId\} tab=\{tab\} squish=\{renaming \? undefined : "row"\}/);
   assert.match(source("../sidebar/GroupBlock.tsx"), /useSquish\(renaming \? null : "row"\)/);
 });
 

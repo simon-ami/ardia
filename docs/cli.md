@@ -18,8 +18,9 @@ is what Ardia does for it: how it ships, how it's installed, and the contract th
 - **macOS.** The Release workflow's `build` job, which holds no secrets, fetches the pinned folder, checks its SHA-256 and
   unpacks it (`official-plugins.py bundle`: files and folders only, its `plugin.json` must be the pinned name and
   version). The `sign` job signs its Mach-Os inside out with the app's Developer ID and hardened runtime, writes each
-  plugin's payload digest into `Info.plist` (`ArdiaBuiltInPlugins`), then signs the app; `verify.sh` recomputes the
-  digests on the signed app and checks every Mach-O's signature and runtime flag. The plugins repo never needs the
+  plugin's payload digest into `Info.plist` (`ArdiaBuiltInPlugins`) and the program registry its manifests' `claim`s and
+  the pin's `legacyInstall` make (`ArdiaProgramRegistry`, `docs/plugins.md` › programs), then signs the app; `verify.sh`
+  recomputes both on the signed app and checks every Mach-O's signature and runtime flag. The plugins repo never needs the
   signing identity. The release no longer publishes an `ardia-cli-*.tar.gz` of its own.
 - **Linux** has no plugins yet, so the package carries the command for its installer: `official-plugins.py linux-cli
   <app version>` fetches the pinned linux-x64 tarball, checks it, and renames it `ardia-cli-<app version>-linux-x64.tar.gz`
@@ -53,9 +54,13 @@ Settings; removing the link brings it back at the next launch.
 On Linux, Settings › Advanced › Command line installs it from the package (`install.sh --version <app version> --sha256
 <digest>` with a `file://` URL), as before.
 
-`cliControl` (`state/app/cliControl.ts`) stays the stored key, the control pill and the token server stay in the app
-(`docs/automation.md`), and on Linux and in older data folders it means what it always did; Linux keeps its switch in
-Settings › Advanced.
+`cliControl` (`state/app/cliControl.ts`) stays the stored key, the control pill stays in the app, and on Linux and in
+older data folders it means what it always did; Linux keeps its switch in Settings › Advanced. While it is on, `ardia`
+reaches Ardia two ways (`docs/automation.md`, `docs/control-socket.md`):
+- **The control socket** (`ArdiaControl.sock`, mode 0600) carries the owner's methods. It has no token: the server
+  only checks that the peer runs as the same user (`getpeereid`), so every process of that user is admitted.
+- **The engine's token connection** carries `ardia browse`. It listens on loopback with a token written to
+  `ArdiaControl.json`, which the user's own processes can read, and its token policy limits what that path can do.
 
 ## The contract
 

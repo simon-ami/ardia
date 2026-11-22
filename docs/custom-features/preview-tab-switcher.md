@@ -1,6 +1,6 @@
 # MRU tab switcher with page previews
 
-- Status: active; Simon verified Control-Tab with several tabs. Overflow scrolling and both themes still need targeted checks.
+- Status: active; the user verified Control-Tab with several tabs. Overflow scrolling and both themes still need targeted checks.
 - Source: [upstream PR #186](https://github.com/mantrakp04/ardia/pull/186), Nana Amoako (`nanadotam`), head `6cc0afcd5e0b0c73b4eb7bb45a4f4cab98f16e28`. Base: `v0.2.47-nightly.5`,
   `f6636c47bd20ac2c86d82f5b54898498594b0512`.
 - Behavior: Control-Tab opens after 140 ms as the default shortcut; Control-Shift-Tab reverses; release commits; Escape cancels;

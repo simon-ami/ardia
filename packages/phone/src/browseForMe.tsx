@@ -22,7 +22,8 @@ export type BrowseForMeEvent =
   | { name: "searchWeb"; query: string }
   | { name: "openLink"; url: string }
   | { name: "closed" }
-  | { name: "settled"; outcome: BrowseForMeOutcome; chatGPTFellBack: boolean }
+  | { name: "settled"; outcome: BrowseForMeOutcome; chatGPTFellBack: boolean; geminiNanoMissing?: string | null }
+  | { name: "talkToMe"; count: string }
   | { name: "account"; connected: boolean; account?: ChatGPTAccountState };
 
 type BrowseForMeNative = {

@@ -21,7 +21,7 @@ final class WindowManager: NSObject, NSWindowDelegate {
   private static let behindTimeout = 1.5
   private static let revealTimeout = 0.6
   private let typeAhead = TypeAheadHold()
-  private let linkActivation = LinkActivationOrder()
+  private let linkActivation = LinkActivationOrder(), leaving = LeavingOverPiP()
   private(set) lazy var fullScreen = FullScreenRestore(windows: self)
 
   private override init() {
@@ -36,11 +36,13 @@ final class WindowManager: NSObject, NSWindowDelegate {
 
   func linkArrivedFromOtherApp(_ urls: [URL]) { linkActivation.linkArrived(urls) }
 
-  private func kind(of window: NSWindow?) -> WindowKind? { id(of: window).flatMap { managed[$0]?.kind } }
+  func kind(of window: NSWindow?) -> WindowKind? { id(of: window).flatMap { managed[$0]?.kind } }
 
   private func isBrowserWindow(_ window: NSWindow?) -> Bool { kind(of: window)?.isBrowser == true }
 
   func isMainWindow(_ window: NSWindow?) -> Bool { kind(of: window) == .browser }
+
+  func isSteadyBrowserWindow(_ window: NSWindow?) -> Bool { isBrowserWindow(window) && id(of: window).flatMap { managed[$0]?.exit } == nil }
 
   var keyWindowKind: WindowKind? { keyWindowId.flatMap { managed[$0]?.kind } }
 
@@ -397,9 +399,7 @@ final class WindowManager: NSObject, NSWindowDelegate {
   private func motionStyle(_ kind: WindowKind) -> WindowMotion.Style { kind == .small ? .little : .main }
 
   private func nextKeyWindow(after closing: NSWindow) -> NSWindow? {
-    NSApp.orderedWindows.first {
-      $0 !== closing && $0.isVisible && !$0.isMiniaturized && $0.canBecomeKey && isBrowserWindow($0) && id(of: $0).flatMap { managed[$0]?.exit } == nil
-    }
+    NSApp.orderedWindows.first { $0 !== closing && $0.isVisible && !$0.isMiniaturized && $0.canBecomeKey && isSteadyBrowserWindow($0) }
   }
   func close(id: String) {
     if let index = pending.firstIndex(where: { $0.id == id }) {
@@ -466,7 +466,7 @@ final class WindowManager: NSObject, NSWindowDelegate {
 
   @objc private func appDidBecomeActive(_ notification: Notification) {
     if ArdiaChromeWindowHost.consumePictureInPictureActivation() { return }
-    DispatchQueue.main.async { [weak self] in self?.focusBrowserPastPiP() }
+    DispatchQueue.main.async { [weak self] in if self?.leaving.givesFocusBack() != true { self?.focusBrowserPastPiP() } }
   }
 
   private func focusBrowserPastPiP() {
