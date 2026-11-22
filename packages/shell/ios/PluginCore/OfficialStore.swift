@@ -100,11 +100,16 @@ struct OfficialStore {
         PluginPrograms.discard(staged)
         return .failure(FolderRefusal(reason: "its download couldn't be kept (\(reason))"))
       }
-      guard renamex_np(staged, copyPath(name, sha), UInt32(RENAME_EXCL)) == 0 else {
+      guard chmod(staged, 0o755) == 0, renamex_np(staged, copyPath(name, sha), UInt32(RENAME_EXCL)) == 0 else {
         let reason = String(cString: strerror(errno))
         unlink(archivePath(name, sha))
         PluginPrograms.discard(staged)
         return .failure(FolderRefusal(reason: "its copy couldn't be put in place (\(reason))"))
+      }
+      guard chmod(copyPath(name, sha), 0o555) == 0 else {
+        PluginPrograms.discard(copyPath(name, sha))
+        unlink(archivePath(name, sha))
+        return .failure(FolderRefusal(reason: "its copy couldn't be made read-only"))
       }
       guard let made = copy(name, sha: sha, fresh: true) else {
         PluginPrograms.discard(copyPath(name, sha))
