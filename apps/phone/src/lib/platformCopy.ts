@@ -1,8 +1,9 @@
+import { actionWords } from "./sharedWords.ts";
 export type CopyPlatform = "android" | "ios";
 
 export type DefaultBrowserSteps = { title: string; subtitle: string; steps: string[]; action: string };
 
-export type ImportFailedCopy = { title: string; body: string; tryAgain: string; tryingAgain: string; startWithout: string; startWithoutNote: string };
+export type ImportFailedCopy = { title: string; body: string; tryAgain: string; startWithout: string; startWithoutNote: string };
 
 export type PlatformCopy = {
   importFailed: ImportFailedCopy;
@@ -30,7 +31,8 @@ export type PlatformCopy = {
   untitledTabByAddress: boolean;
   devicesShowLastSeen: boolean;
   devicesNameMacModels: boolean;
-  stopSyncAsActionSheet: boolean;
+  confirmsAsActionSheet: boolean;
+  forgottenSearchLeaves: string;
   menuRowTogglesSwitch: boolean;
   menuLargeTextScale: number;
   pinFeedbackInMenu: boolean;
@@ -42,8 +44,7 @@ const ANDROID: PlatformCopy = {
   importFailed: {
     title: "Couldn’t Bring Over Your Tabs",
     body: "Ardia couldn’t bring over the tabs and settings from the previous version. They’re still on this phone.",
-    tryAgain: "Try Again",
-    tryingAgain: "Trying Again…",
+    tryAgain: actionWords.tryAgain,
     startWithout: "Start Without Them",
     startWithoutNote: "They stay on this phone, so a later version can still bring them over.",
   },
@@ -71,7 +72,8 @@ const ANDROID: PlatformCopy = {
   untitledTabByAddress: true,
   devicesShowLastSeen: true,
   devicesNameMacModels: false,
-  stopSyncAsActionSheet: false,
+  confirmsAsActionSheet: false,
+  forgottenSearchLeaves: "your history on this phone",
   menuRowTogglesSwitch: true,
   menuLargeTextScale: 1.3,
   pinFeedbackInMenu: false,
@@ -83,8 +85,7 @@ const IOS: PlatformCopy = {
   importFailed: {
     title: "Couldn’t Bring Over Your Tabs",
     body: "Ardia couldn’t bring over the tabs and settings from the previous version. They’re still on this iPhone.",
-    tryAgain: "Try Again",
-    tryingAgain: "Trying Again…",
+    tryAgain: actionWords.tryAgain,
     startWithout: "Start Without Them",
     startWithoutNote: "They stay on this iPhone, so a later version can still bring them over.",
   },
@@ -117,7 +118,8 @@ const IOS: PlatformCopy = {
   untitledTabByAddress: false,
   devicesShowLastSeen: false,
   devicesNameMacModels: true,
-  stopSyncAsActionSheet: true,
+  confirmsAsActionSheet: true,
+  forgottenSearchLeaves: "your history on this iPhone",
   menuRowTogglesSwitch: false,
   menuLargeTextScale: 1.6,
   pinFeedbackInMenu: true,

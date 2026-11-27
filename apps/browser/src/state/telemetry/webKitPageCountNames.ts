@@ -48,8 +48,10 @@ export type WebKitCount =
   | "webAudioAudible"
   | "pageMuteFallback"
   | "fullscreen"
+  | "fullscreenFrameKept"
   | "discard"
   | "discardWake"
+  | "backdropHidden"
   | "historyRestored"
   | "unresponsive"
   | "unresponsiveEnded"
@@ -105,8 +107,10 @@ export const WEBKIT_COUNTS = {
   webAudioAudible: "webKitWebAudioAudible",
   pageMuteFallback: "webKitPageMuteFallbacks",
   fullscreen: "webKitFullscreens",
+  fullscreenFrameKept: "webKitFullscreenFramesKept",
   discard: "webKitDiscards",
   discardWake: "webKitDiscardWakes",
+  backdropHidden: "webKitBackdropsHidden",
   historyRestored: "webKitHistoryRestores",
   unresponsive: "webKitUnresponsive",
   unresponsiveEnded: "webKitUnresponsiveEnded",

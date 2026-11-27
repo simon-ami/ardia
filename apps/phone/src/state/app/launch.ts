@@ -19,6 +19,7 @@ import { showToast } from "../toasts/store";
 import { pages } from "../../platform/pages";
 import { launchArguments } from "./launchFlags";
 import { isLabBuild } from "../../platform/lab";
+import { markTiming } from "./interactionPerf";
 import { runDeckPullScript } from "../browse/deckPullScript";
 import { DEMO_PRIVATE_URLS, manyTabTitle, sampleToast } from "./launchRules";
 
@@ -32,6 +33,7 @@ export function applyLaunchSettings() {
   if (!args.isDemo) return;
   if (!args.showsOnboarding) setPreference("hasFinishedOnboarding", true);
   if (args.restingStart) setPreference("autoOpensKeyboard", false);
+  if (args.collapseBar) setPreference("collapsesBottomBar", true);
   const color = args.color?.toLowerCase() ?? null;
   if (color === "custom" && !currentPreferences().customTheme) setPreference("customTheme", demoTheme());
   if (color && acceptsPreference("colorChoice", color)) setPreference("colorChoice", color as ColorChoice);
@@ -64,7 +66,7 @@ async function warmDemoPictures() {
 
 async function runDemoScenario(args: LaunchArguments) {
   demoWarming = warmDemoPictures();
-  if (args.browseIncognito) setIncognito(true);
+  if (args.browseIncognito && !setIncognito(true)) return;
   if (args.browseOpen) openPage(args.browseOpen, "typed");
   if (args.browseQuery !== null) presentSearch("home", args.browseQuery);
   if (args.browseSurface === "browsing") {
@@ -158,11 +160,27 @@ async function deckStep({ kind, argument }: DeckStep) {
     case "archivecard":
       sendDeckCommand({ kind: "showArchiveCard" });
       return;
+    case "switch": {
+      const order = deckOrder(currentTabs());
+      const at = order.findIndex((tab) => tab.id === currentTabs().selectedId);
+      const other = order[at > 0 ? at - 1 : at + 1];
+      if (!other || useBrowse.getState().surface !== "browsing") return;
+      openTab(other.id);
+      await wait((Number(argument) || 0) * 1000);
+      await showDeck();
+      return;
+    }
     case "browse": {
       const selected = currentTabs().selectedId;
       if (selected) openTab(selected);
       return;
     }
+    case "goincognito":
+      setIncognito(true);
+      return;
+    case "goregular":
+      setIncognito(false);
+      return;
     case "incognito":
       for (const url of DEMO_PRIVATE_URLS) openNewTab({ url, origin: "typed", isPrivate: true });
       await showDeck();
@@ -197,6 +215,27 @@ async function deckStep({ kind, argument }: DeckStep) {
         const tab = openNewTab({ url: `https://en.wikipedia.org/wiki/Special:Random?n=${index}`, origin: "typed", isPrivate: false, selecting: false });
         updateTabById(tab.id, { title: manyTabTitle(index) });
       }
+      return;
+    case "scheme":
+      if (!argument || !acceptsPreference("schemeChoice", argument)) return;
+      markTiming(`scheme ${argument}`);
+      setPreference("schemeChoice", argument as SchemeChoice);
+      return;
+    case "color":
+      if (!argument || !acceptsPreference("colorChoice", argument)) return;
+      markTiming(`color ${argument}`);
+      setPreference("colorChoice", argument as ColorChoice);
+      return;
+    case "swipe": {
+      const id = neighbourAt(swipeOrder(), currentTabs().selectedId, Number(argument) || 1);
+      if (!id) return;
+      markTiming("tab swipe");
+      switchToNeighbour(id, true);
+      return;
+    }
+    case "plus":
+      markTiming("plus press");
+      newTab();
       return;
     default:
       console.log(`ardia-launch deck step ${kind} is unknown; skipped`);

@@ -33,6 +33,7 @@ Shipped (site only, not yet deployed):
 - **Windows / Linux:** Download stays, plus "Mac only for now. Follow the case on GitHub." under the hero and
   closing buttons (`github_clicked { link: notify }`). Event: `non_mac_visit { os }`, once per session.
 - **Download band experiment** on Macs (below).
+- **Donate floor experiment** for everyone who reaches the donate amounts (below).
 - Dead clicks, dead swipes and rage clicks are captured (`$dead_click`, `$dead_swipe`, `$rageclick`).
 
 How visitors are sorted: `apps/site/src/components/Device.astro`, before first paint, sets
@@ -65,6 +66,29 @@ or narrower.
 
 Result: _pending._
 
+### Experiment: `donate-floor`
+
+- **Hypothesis:** the lowest donate amount sets the anchor. $5 gets more people to give; $10 raises more per gift.
+  Which one raises more money, and how many people give at all?
+- **Flag key:** `donate-floor`. **Variants:** `ten` (control: $10 is the lowest amount), `five` ($5 instead). 50/50,
+  on every device. Both amounts stay in the page (`apps/site/src/components/Donate.astro`); the variant sets
+  `<html data-donate-floor>`, which shows one of them.
+- **Who's in it:** visitors who come within 800px of the donate section, or hover, focus or click the header's
+  Donate pill. Only then does the page ask for the variant, recording `$feature_flag_called` (the exposure).
+  Visitors with telemetry off are never exposed and see $10.
+- **Primary metric:** money raised per exposed visitor, read in Stripe: every payment link the page shows carries
+  `client_reference_id=donate-floor_ten` or `donate-floor_five`, so each Checkout Session says which arm it came
+  from. The custom monthly form (`/api/donate/monthly`) isn't tagged. Secondary: the share of exposed visitors who
+  click an amount (`donate_clicked` with an `amount`), and who click the lowest one (`amount` 5 or 10), on the
+  dashboard's Site › Experiment: donate-floor.
+- **Stopping rule:** at least 300 exposures per variant and 7 days. Gifts are rare, so read the money too and
+  expect to call it on direction if payments stay in single digits.
+- **Local check:** `http://localhost:4321/?nnflag=five` (or `ten`) forces a variant on localhost only.
+- **Launched:** _pending deploy._ Stripe: the $5 links (`donate_once_5`, `donate_monthly_5`) and the $10 links
+  (`donate_once_10`, `donate_monthly_10`) are all live.
+
+Result: _pending._
+
 ## Installs: downloads → first launch → still running
 
 A download isn't an install. What we can count without breaking the privacy promise (added 2026-09-30,
@@ -73,7 +97,7 @@ takes effect with the first release after 0.2.13):
 - **Downloads:** GitHub's `download_count` for each release's DMG. Sparkle updates are the zip's count.
 - **Update checks:** builds after 0.2.13 poll `https://netnyahoo.com/appcast.xml` (0.2.32 and earlier) or `https://ardia.dev/appcast.xml` (`SUFeedURL`). nginx
   (`infra/site/nginx.conf`) answers every request with a 302 to
-  `https://github.com/mantrakp04/ardia/releases/latest/download/appcast.xml` and, beside it, mirrors a
+  `https://github.com/ardia-browser/ardia/releases/latest/download/appcast.xml` and, beside it, mirrors a
   telemetry event `update_check { version, first }` with the day as its timestamp. Only requests whose
   User-Agent is the app's Sparkle (`Ardia/<version> Sparkle/…`) count. Nothing else is passed on: no IP
   (so no country), no headers, no cookie, a fixed `distinct_id` (`update-check`). The redirect never waits on
@@ -172,7 +196,18 @@ owner's Mac ──▶ ardia.dev/_ch/ (read-only ClickHouse user)   ardia.dev/_re
     crashed process's main thread name, `CrRendererMain`, `CrGpuMain`, `CrUtilityMain`). New fields: `crash_process`
     (`browser`, `renderer`, `gpu`, `utility`, `alerts`, `plugin`), `crashed_version` and `crashed_build` (the app version
     that crashed, which is the previous one when the report is found after an update; empty for helpers),
-    `crashed_engine_version` (helpers), `crash_termination` (`SIGNAL`, `CODESIGNING`…), `crash_uptime_s` (how
+    `crashed_engine_version` (helpers), `crash_termination` (`SIGNAL`, `CODESIGNING`…), and since #2371
+    `crash_termination_code` (the report's termination code: the signal number for `SIGNAL`),
+    `crash_termination_indicator` (the system's indicator as a fixed kind, its trailing code dropped: `trace_trap`,
+    `segmentation_fault`, `bus_error`, `abort_trap`, `illegal_instruction`, `killed`, `terminated`, `floating_point`,
+    `invalid_page`, else `other`), `crash_exception_code` (the first Mach exception code: 1 is `KERN_INVALID_ADDRESS` for
+    `EXC_BAD_ACCESS`), `crash_fault_near_null` (`EXC_BAD_ACCESS` only, from the second exception code: whether the
+    faulting address is below 1 MiB. That's an address-range indicator, not proof of a null dereference: it fits a null
+    pointer plus an offset, and also a corrupted pointer that happens to land low. The address itself is never sent),
+    `crash_thread` (the crashed thread's kind from a fixed list, only when the report names its faulting thread:
+    `chrome_main` for `CrBrowserMain`, `CrRendererMain`, `CrGpuMain` and `CrUtilityMain`, `thread_pool`, `io`, `compositor`, `web_worker`, `media`, `react_js`, `react_other`, `appkit_events`, `apple_other`, else `other`;
+    never the name) and `crash_queue` (`main` for the main dispatch queue, else `other`; likewise only for a named
+    faulting thread), `crash_uptime_s` (how
     long the process ran), `crash_vm_writable_mb` (the report's `Writable regions: Total=`, the virtual size of its
     writable regions, not what it wrote), and the context saved before the crash:
     `ctx_tabs`, `ctx_windows`, `ctx_profiles`, `ctx_footprint_mb` (the app process's physical footprint),
@@ -233,7 +268,7 @@ owner's Mac ──▶ ardia.dev/_ch/ (read-only ClickHouse user)   ardia.dev/_re
     to the first press in its page, within 60 s), `range_selects` (⇧-clicks that selected a range of tabs) and
     `range_from_shown` (those whose last clicked tab was no longer the shown one, so the range started at the shown tab:
     #1074, where it started at a Top Apps tile and took every pinned tab), `page_refused` (presses on the sidebar or anything else drawn over a
-    WebKit page that the page turned away, `WebKitPagePresses.swift`). Issue #1386 (a sidebar tab sometimes needs a second click) adds
+    WebKit page that the page turned away, `WebKitPagePresses.swift`). Issue #3965 (a double-click on a Top Apps tile already at its pinned URL refreshes it, as Dia's) adds `tile_double_returns` (double-clicks that went back to the pinned URL), `tile_double_reloads` (those that refreshed the page), `tile_double_fresh` (those that did nothing because the page was fresh: the pair's first click switched to the tile or woke it, or it was still loading) and `tile_double_missed` (refreshes that found no page, or that the engine rejected or threw on: should stay near zero). A refresh counts once, as a reload or a miss, when the page answers. Issue #1386 (a sidebar tab sometimes needs a second click) adds
     counts of where a press is lost: `drop_no_release`/`drop_not_dragged`/`drop_no_start`/`drop_start_mismatch` (the
     condition that stopped a drag from being rescued as a click; they add up to `drags`), `press_out_no_press` (presses
     Pressable ended without `onPress`), `unfocused_presses` and `unfocused_no_press` (presses that began while the
@@ -241,6 +276,10 @@ owner's Mac ──▶ ardia.dev/_ch/ (read-only ClickHouse user)   ardia.dev/_re
     drift from where the press began when Pressable ended it, in buckets of under 5 pt, 5-9 pt, 10 pt or more and
     unknown, for every press (`drift_lt5`/`drift_5_9`/`drift_10_plus`/`drift_unknown`) and for those without `onPress`
     (`no_press_drift_*`). Counts only: no tab id, URL, title or position.
+  - `usage_counts` adds `pip_pinches_unfocused` and `pip_pinches_from_other_app` (#3973): pinches that resized a
+    Picture in Picture window while it wasn't the key window, and those that arrived while another app was in front.
+    Both are within `pip_pinches`; either dropping while `pip_pinches` holds means pinching an unfocused window broke.
+    Counts only: never the window's size or place.
   - `usage_counts` adds `web_notifications_from_shim` (website notifications that reached the page script this
     period; a notification that never reaches the page script doesn't count, so a gap shows up as missing counts),
     `web_notification_clicks` (clicks on Ardia's website notifications) and `worker_notification_responses` (clicks or

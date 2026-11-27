@@ -13,6 +13,7 @@ const OWN_METHOD: Partial<Record<SettingKey, string>> = {
   defaultProfileId: "profiles.setDefault",
   customSearchEngines: "search.add, search.update and search.remove",
   cliControl: "nothing: the ardia command can't switch its own control",
+  showCliPill: "nothing: the ardia command can't hide its own control pill",
   allowJavaScriptFromAppleEvents: "nothing: it would let any AppleScript run script in every page",
   extensionSearchEngines: "nothing: it mirrors the search engines extensions add, so install, turn off or remove the extension (extensions.*)",
 };
@@ -58,7 +59,7 @@ function apply(values: Record<string, unknown>, label: string, replaced: Partial
   const settings = now().settings;
   const ruled = Object.fromEntries(Object.entries(values).filter(([key]) => hasSocketRule(key)));
   const fromRules = checkedByRules(ruled, settings, values);
-  const { values: checked, problems } = checkedSettings(label, Object.fromEntries(Object.entries(values).filter(([key]) => !hasSocketRule(key))), { ...settings, ...fromRules.patch });
+  const { values: checked, problems } = checkedSettings(label, Object.fromEntries(Object.entries(values).filter(([key]) => !hasSocketRule(key))), { ...settings, ...fromRules.patch }, { order: now().profileOrder, mustExist: true });
   problems.push(...fromRules.problems.map((p) => `${label}: ${p}`));
   const merged = { ...fromRules.patch, ...checked, ...replaced };
   const problem = problems.length ? null : searchProblem(settings, { ...settings, ...merged } as Settings);

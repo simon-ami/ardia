@@ -3,8 +3,8 @@
 # release.sh packs it), the dSYMs the build wrote beside it (ArdiaCore-<key:12>-symbols.tar.xz, with
 # ArdiaCore-<key:12>-uuids.txt naming the dSYM of each image by its UUID: scripts/symbolicate-crash.sh reads them) and
 # its source, then uploads them to the GitHub prerelease engine-<engine key:12> (never latest) and appends the key's
-# line to packages/ardiacore/prebuilt-engines.tsv. The key (engine/engine-key.sh) covers engine/ and the offline game
-# the framework packs.
+# line to packages/ardiacore/prebuilt-engines.tsv. The key (engine/engine-key.sh --platform macos) covers what the macOS
+# engine is built from: engine/ but for Linux's lines of the series, and the offline game the framework packs.
 #
 #   scripts/publish-engine.sh [--dry-run] [--out <dir>] [<Chromium Framework.framework>]
 #   scripts/publish-engine.sh -h | --help
@@ -41,8 +41,8 @@ run() {
 
 [ -f "$framework/Versions/Current/Chromium Framework" ] || die "no Chromium Framework at $framework"
 [[ " $(lipo -archs "$framework/Versions/Current/Chromium Framework") " == *" arm64 "* ]] || die "$framework has no arm64 slice"
-tree="$("$root/engine/engine-key.sh")"
-key_paths=($("$root/engine/engine-key.sh" --paths))
+tree="$("$root/engine/engine-key.sh" --platform macos)"
+key_paths=($("$root/engine/engine-key.sh" --platform macos --paths))
 short="${tree:0:12}"
 tag="engine-$short"
 commit="$(git -C "$root" rev-parse HEAD)"
@@ -75,7 +75,7 @@ echo "==> Strip"
 "$root/packages/ardiacore/scripts/strip-engine.sh" "$work/Ardia.app" "$out/symbols"
 echo "==> Pack"
 tar --no-mac-metadata -cf - -C "$work/Ardia.app/Contents/Frameworks" "Chromium Framework.framework" | xz -T0 -9 >"$archive"
-rm -rf "$work"
+packed="$work/Ardia.app/Contents/Frameworks/Chromium Framework.framework"
 sha="$(shasum -a 256 "$archive" | awk '{ print $1 }')"
 echo "$sha  $(basename "$archive")" >"$archive.sha256"
 echo "==> Source"
@@ -84,7 +84,7 @@ assets=("$archive" "$archive.sha256" "$symbols_archive" "$uuids_file" "$source_a
 line="$(printf '%s\t%s\t%s' "$tree" "$tag" "$sha")"
 
 echo "==> Publish"
-notes="ArdiaCore's engine for engine key $tree (commit $commit), for builds without a Chromium tree (packages/ardiacore/scripts/fetch-engine.sh), with its dSYMs for scripts/symbolicate-crash.sh. Not an app release."
+notes="ArdiaCore's macOS engine for engine key $tree (engine/engine-key.sh --platform macos, commit $commit), for builds without a Chromium tree (packages/ardiacore/scripts/fetch-engine.sh), with its dSYMs for scripts/symbolicate-crash.sh. Not an app release."
 if [ "$dry" = 1 ] || ! gh release view "$tag" -R "$REPO" >/dev/null 2>&1; then
   run gh release create "$tag" -R "$REPO" --prerelease --latest=false --target "$commit" --title "Engine $short" --notes "$notes"
 fi
@@ -94,7 +94,9 @@ if [ "$dry" = 1 ]; then
   echo "$line"
 else
   [ "$(gh release view "$tag" -R "$REPO" --json isPrerelease -q .isPrerelease)" = true ] || die "$tag isn't a prerelease"
+  "$root/scripts/lib/engine-symbols-published.sh" "$tag" "$packed" || die "$tag went up without symbols that name this engine's crashes (above): upload them again before committing the table line"
   printf '%s\n' "$line" >>"$table"
   echo "Published $tag. Commit packages/ardiacore/prebuilt-engines.tsv (appended: $line)."
 fi
+rm -rf "$work"
 du -sh "${assets[@]}"

@@ -6,6 +6,8 @@ import { PLATFORM_TERMS } from "../../../lib/platformTerms";
 import type { PluginListing, ProcessState, ProgramsState } from "../../../state/plugins/store";
 import {
   consentLines,
+  fullControlLine,
+  FULL_CONTROL_SUMMARY,
   disablePlugin,
   pluginsFolderPath,
   relinkPrograms,
@@ -19,8 +21,9 @@ import {
   pluginSecretRowIsSet,
   showPluginLog,
   showPluginsFolder,
+  UNSAVED,
 } from "../../../state/plugins/actions";
-import { usePluginActive, usePluginListing, usePluginNeedsReview, usePluginProcess, usePluginPrograms, usePluginRecord, usePluginValues } from "../../../state/plugins/hooks";
+import { usePluginActive, usePluginListing, usePluginNeedsReview, usePluginProcess, usePluginPrograms, usePluginRecord, usePluginUnsaved, usePluginValues } from "../../../state/plugins/hooks";
 import { goToSettingsPane, SETTINGS_WINDOW_ID, type SettingsPlace } from "../../../state/settings/settingsWindows";
 import { Button, PopUp, Symbol, TextField, Toggle } from "../../ui";
 import { Group, Row, SectionHeader } from "../Form";
@@ -31,6 +34,7 @@ import { OfficialPluginsSection, usePluginsBelowOfficial } from "./OfficialPlugi
 import { useControlTurnedOff } from "../../../state/app/programControlSetting";
 import { useNeverChosenCount } from "../../../state/site/passwordManager";
 import { PasswordManagerDetails } from "./PasswordManagerPlugin";
+import { autoUpdateNote } from "../../../state/plugins/officialView";
 
 export function PluginsPane({ detail }: SettingsPlace) {
   if (!PLATFORM_FEATURES.plugins) return <UnavailablePage />;
@@ -92,8 +96,9 @@ function originText(listing: PluginListing | undefined, active: boolean): string
   return listing?.official ? "Official" : null;
 }
 
-function statusOf(m: PluginManifest | null, problems: string[], active: boolean, review: boolean, p: ProcessState | undefined, describe = true): string {
+function statusOf(m: PluginManifest | null, problems: string[], active: boolean, review: boolean, p: ProcessState | undefined, unsaved: boolean, describe = true): string {
   if (!m) return problems.slice(0, 2).join("; ") || "This plugin can't load";
+  if (unsaved && !active) return UNSAVED;
   if (review) return "Its plugin.json changed. Review it to turn it back on.";
   const running = active ? processText(p, !!m.main) : null;
   return [describe ? m.description : null, running].filter(Boolean).join(" · ");
@@ -115,11 +120,12 @@ function PluginRow({ name }: { name: string }) {
   const active = usePluginActive(name);
   const review = usePluginNeedsReview(name);
   const process = usePluginProcess(name);
+  const unsaved = usePluginUnsaved(name);
   const m = listing?.manifest ?? null;
   return (
     <Row
       title={m ? `${m.title}${m.version ? ` ${m.version}` : ""}` : name}
-      description={[originText(listing, active), statusOf(m, listing?.problems ?? [], active, review, process)].filter(Boolean).join(" · ")}
+      description={[originText(listing, active), m && fullControlLine(m) ? FULL_CONTROL_SUMMARY : null, statusOf(m, listing?.problems ?? [], active, review, process, unsaved)].filter(Boolean).join(" · ")}
       icon={<Symbol name={m?.icon ?? m?.page?.icon ?? "puzzlepiece"} size={14} color={theme.icon} style={ICON} />}
       onPress={() => goToSettingsPane("plugins", null, name)}
     >
@@ -223,9 +229,11 @@ function PluginPage({ name }: { name: string }) {
   const active = usePluginActive(name);
   const review = usePluginNeedsReview(name);
   const process = usePluginProcess(name);
+  const unsaved = usePluginUnsaved(name);
   const programs = usePluginPrograms(name);
   const values = usePluginValues(name);
   const movesProfiles = useNeverChosenCount();
+  const record = usePluginRecord(name);
   const m = listing?.manifest ?? null;
   if (!listing) return <PaneSubPage intro="This plugin isn't installed any more.">{null}</PaneSubPage>;
   return (
@@ -233,10 +241,11 @@ function PluginPage({ name }: { name: string }) {
       <Group>
         <Row
           title={active ? "On" : review ? "Changed since you turned it on" : "Off"}
-          description={[originText(listing, active), statusOf(m, listing.problems, active, review, process, false)].filter(Boolean).join(" · ") || undefined}
+          description={[originText(listing, active), statusOf(m, listing.problems, active, review, process, unsaved, false)].filter(Boolean).join(" · ") || undefined}
         >
           <Toggle value={active} disabled={!m} asksFirst={!active} accessibilityLabel={`Turn on ${m?.title ?? name}`} onChange={(on) => setOn(name, on)} />
         </Row>
+        {listing.official && record.updated && record.approved === listing.hash ? <Row title={autoUpdateNote(record.updated).title} description={autoUpdateNote(record.updated).description} /> : null}
         {active && (m?.process || (m?.main && process)) ? (
           <Row title={m?.process ? "Its program" : "Its code"} description={m?.process ? m.process.run.join(" ") : typeof m?.main === "string" ? m.main : m?.main?.entry}>
             <Button title="Show Log" onPress={() => showPluginLog(name)} />
@@ -264,7 +273,7 @@ function PluginPage({ name }: { name: string }) {
         <>
           <SectionHeader title="What it gets" />
           <Group>
-            {consentLines(m, { controlOff, official: !!listing.official && !active, movesProfiles }).map((line) => (
+            {consentLines(m, { controlOff, official: !!listing.official && !active, movesProfiles, installed: active }).map((line) => (
               <Row key={line.text} title={line.text} icon={<Symbol name={line.icon} size={13} color={theme.icon} style={ICON} />} />
             ))}
           </Group>
@@ -288,6 +297,4 @@ function PluginPage({ name }: { name: string }) {
   );
 }
 
-const LINE = { flex: 1 } as const;
 const ICON = { width: 18, height: 18 } as const;
-const TITLE_ICON = { width: 28, height: 28 } as const;

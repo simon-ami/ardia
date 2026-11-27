@@ -1,6 +1,6 @@
 import type { BrowserCommand } from "../../platform/commands";
 
-export type CommandInteraction = "quiet" | "interactive" | "asksWhen";
+type CommandInteraction = "quiet" | "interactive" | "asksWhen";
 
 export const COMMAND_INTERACTION: Readonly<Record<BrowserCommand, CommandInteraction>> = {
   newTab: "quiet",
@@ -16,6 +16,7 @@ export const COMMAND_INTERACTION: Readonly<Record<BrowserCommand, CommandInterac
   closeTab: "asksWhen",
   unloadTabs: "quiet",
   closeAllTabs: "quiet",
+  closeDuplicateTabs: "quiet",
   print: "interactive",
   copyUrl: "quiet",
   copyUrlAsMarkdown: "quiet",
@@ -28,14 +29,22 @@ export const COMMAND_INTERACTION: Readonly<Record<BrowserCommand, CommandInterac
   reload: "quiet",
   forceReload: "quiet",
   toggleTabLayout: "quiet",
+  setTabLayout: "quiet",
   toggleSidebar: "quiet",
   toggleSidebarSide: "quiet",
+  toggleCompactToolbar: "quiet",
+  togglePinnedFold: "quiet",
   openSplitPane: "quiet",
+  openSplitPaneBelow: "quiet",
   useSelectionForFind: "quiet",
   findAndReplace: "quiet",
   jumpToSelection: "quiet",
   focusNextPane: "quiet",
   focusPreviousPane: "quiet",
+  moveSplitPaneLeft: "quiet",
+  moveSplitPaneRight: "quiet",
+  moveSplitPaneUp: "quiet",
+  moveSplitPaneDown: "quiet",
   toggleFullUrl: "quiet",
   toggleJavaScriptFromAppleEvents: "quiet",
   toggleAddressBar: "quiet",
@@ -87,6 +96,7 @@ export const COMMAND_INTERACTION: Readonly<Record<BrowserCommand, CommandInterac
   newGroupWithTabs: "quiet",
   cleanUpTabs: "quiet",
   tidyPins: "quiet",
+  sortTabs: "quiet",
   searchTabs: "quiet",
   renameTab: "quiet",
   changeTabIcon: "interactive",
@@ -118,3 +128,5 @@ export const COMMAND_INTERACTION: Readonly<Record<BrowserCommand, CommandInterac
   closeTabGroup: "asksWhen",
   openProfileMenu: "interactive",
 };
+
+export const KEY_REPEAT_IGNORED_COMMANDS: ReadonlySet<string> = new Set(["focusCommandBar"]);

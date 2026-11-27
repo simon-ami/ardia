@@ -113,7 +113,8 @@ static BOOL InTabPage(id responder) {
   const BOOL button = (type & (kButtonDowns | kButtonUps | kButtonDrags)) != 0;
   if (!gOnScreenAhead && (!button || gPresses.Idle())) return NO;
   const BOOL lands = !(type & (kButtonUps | kButtonDrags));
-  const BOOL overCoveredPage = lands && gOnScreenAhead && [ArdiaWebView revealGapIn:event.window] && InTabPage(HitInWindow(event));
+  const BOOL activatesApp = (type & kButtonDowns) && !NSApp.isActive;
+  const BOOL overCoveredPage = lands && !activatesApp && gOnScreenAhead && [ArdiaWebView revealGapIn:event.window] && InTabPage(HitInWindow(event));
   if (!button) return overCoveredPage;
   const Press press = type & kButtonDowns ? Press::kDown : type & kButtonUps ? Press::kUp : Press::kDrag;
   return gPresses.Swallows((unsigned)event.buttonNumber, press, event.windowNumber, overCoveredPage);
@@ -191,7 +192,10 @@ static BOOL InTabPage(id responder) {
   [IdentityHidden() removeObjectForKey:window];
   [CATransaction begin];
   [CATransaction setDisableActions:YES];
-  for (NSView *view in hidden.keyEnumerator.allObjects) view.alphaValue = [hidden objectForKey:view].doubleValue;
+  for (NSView *view in hidden.keyEnumerator.allObjects) {
+    view.alphaValue = [hidden objectForKey:view].doubleValue;
+    ardia_host::KeepHitsWhileClear(view, false);
+  }
   [CATransaction commit];
   [ArdiaWebView revealGapChangedIn:window];
   dispatch_async(dispatch_get_main_queue(), ^{
@@ -222,6 +226,7 @@ static BOOL InTabPage(id responder) {
   [CATransaction setDisableActions:YES];
   for (NSView *view in found.allObjects) {
     if (![hidden objectForKey:view]) [hidden setObject:@(view.alphaValue) forKey:view];
+    ardia_host::KeepHitsWhileClear(view, true);
     view.alphaValue = 0;
   }
   [CATransaction commit];

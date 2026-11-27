@@ -1,14 +1,14 @@
 import type { InstallResult } from "./installWaiters";
 import type { OfficialPlugin } from "./official";
-import type { OfficialFetch, ProgramsState } from "./store";
+import type { OfficialAutoUpdate, OfficialFetch, ProgramsState } from "./store";
 
 export const wasCancelled = (result: InstallResult) => !result.ok && result.cancelled === true;
 
 export type OfficialAttempt = { state: "asking" } | { state: "installing" } | { state: "failed"; reason: string } | null;
 
-export type OfficialAction = "install" | "again" | "update" | null;
+type OfficialAction = "install" | "again" | "update" | null;
 
-export type OfficialView = {
+type OfficialView = {
   shown: boolean;
   note: "installed" | "comingSoon" | null;
   status: string | null;
@@ -23,7 +23,7 @@ export const installedLabel = (plugin: OfficialPlugin) => (plugin.version ? `Ins
 
 const HIDDEN: OfficialView = { shown: false, note: null, status: null, failed: false, busy: false, action: null, opens: false, firstCommand: null };
 
-export function downloadStatus(fetch: OfficialFetch | undefined): string | null {
+function downloadStatus(fetch: OfficialFetch | undefined): string | null {
   if (fetch?.state === "promoting") return "Installing…";
   if (fetch?.state !== "fetching") return null;
   return fetch.total > 0 ? `Downloading… ${Math.min(100, Math.floor((fetch.received / fetch.total) * 100))}%` : "Downloading…";
@@ -51,7 +51,9 @@ function installedView(plugin: OfficialPlugin, programs: ProgramsState | undefin
   return base;
 }
 
-export function officialView(plugin: OfficialPlugin, programs: ProgramsState | undefined, attempt: OfficialAttempt, fetch?: OfficialFetch): OfficialView {
+const olderInstallLine = (plugin: OfficialPlugin, program: string) => `An older ${program} is installed. Install ${officialTitle(plugin)} to update it.`;
+
+export function officialView(plugin: OfficialPlugin, programs: ProgramsState | undefined, attempt: OfficialAttempt, fetch?: OfficialFetch, olderProgram: string | null = null): OfficialView {
   if (plugin.state === "unsupported") return HIDDEN;
   if (plugin.state === "comingSoon") return { ...HIDDEN, shown: true, note: "comingSoon" };
   if (plugin.state === "installed") return installedView(plugin, programs, attempt, fetch);
@@ -61,10 +63,19 @@ export function officialView(plugin: OfficialPlugin, programs: ProgramsState | u
   if (attempt?.state === "asking") return { ...base, busy: true };
   if (attempt?.state === "installing") return { ...base, status: "Installing…", busy: true };
   if (attempt?.state === "failed") return { ...base, status: attempt.reason, failed: true, action: "again" };
-  return { ...base, action: "install" };
+  return { ...base, action: "install", status: olderProgram ? olderInstallLine(plugin, olderProgram) : null };
 }
 
-export const officialTitle = (plugin: OfficialPlugin) => plugin.title || plugin.name;
+export function autoUpdateNote(updated: OfficialAutoUpdate): { title: string; description: string } {
+  const title = updated.to ? `Updated by itself to ${updated.to}` : "Updated by itself";
+  const said = updated.runtime
+    ? "It added its own code, which runs in Ardia's sandbox, offline, and first starts when you use one of its commands in the command bar. Its permissions didn't change."
+    : "Its permissions didn't change.";
+  const since = updated.from ? `New since ${updated.from}` : "New since the version you approved";
+  return { title, description: updated.added.length ? `${said} ${since}: ${updated.added.join("; ")}.` : said };
+}
+
+export const officialTitle =(plugin: OfficialPlugin) => plugin.title || plugin.name;
 
 export const isOffered = (plugin: OfficialPlugin) => plugin.state === "available" || plugin.state === "comingSoon";
 

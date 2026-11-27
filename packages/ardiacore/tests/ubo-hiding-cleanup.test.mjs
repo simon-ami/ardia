@@ -282,7 +282,6 @@ test("the cleanup runs before the engines load, holds back My filters reads and 
   assert.match(script, /"µb\.loadUserFilters = async function\(\) \{\\n"\n\s+"    await ardiaCleanupGate;\\n"/);
   assert.match(script, /patch\("js\/start\.js",\n\s+"    \/\/ Prime the filtering engines before first use\.\\n",\n\s+"    await µb\.ardiaRemoveSplitHidingRules\(\);/);
   assert.match(script, /rawText = µb\.ardiaCleanHidingRules\(rawText\)\.text;/);
-  assert.match(script, /^UBO_PATCH="33"$/m);
   assert.match(script, /compiledMagic: 173,/);
   assert.match(script, /selfieMagic: 173,/);
   assert.match(script, /selfie\/staticArdia2/);

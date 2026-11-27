@@ -116,7 +116,9 @@ BOOL ThrowEnabled() {
 }
 
 NSPoint PointerOf(NSEvent *event) {
-  CGPoint point = CGEventGetLocation(event.CGEvent);
+  CGEventRef backing = event.CGEvent;
+  if (!backing) return NSEvent.mouseLocation;
+  CGPoint point = CGEventGetLocation(backing);
   return NSMakePoint(point.x, NSMaxY(NSScreen.screens.firstObject.frame) - point.y);
 }
 
@@ -192,21 +194,29 @@ NSString *CornerName(int corner) {
                                               object:window
                                                queue:nil
                                           usingBlock:^(NSNotification *) { [weakSelf detach]; }]];
+    _spaceObserver = [NSWorkspace.sharedWorkspace.notificationCenter addObserverForName:NSWorkspaceActiveSpaceDidChangeNotification
+                                                                                 object:nil
+                                                                                  queue:nil
+                                                                             usingBlock:^(NSNotification *) { [weakSelf activeSpaceChanged]; }];
     self.keepOnTop = KeepOnTop();
   }
   return self;
 }
 
 - (void)detach {
+  [ArdiaPiPZoom dropStandInOn:_window];
   [ArdiaPiPController abandonSwipeOn:_window];
   for (id observer in _observers) [NSNotificationCenter.defaultCenter removeObserver:observer];
   [_observers removeAllObjects];
+  if (_spaceObserver) [NSWorkspace.sharedWorkspace.notificationCenter removeObserver:_spaceObserver];
+  _spaceObserver = nil;
   [self endMomentumWait];
   [NSObject cancelPreviousPerformRequestsWithTarget:self];
   [_slide invalidate];
   [_resizeCursor detach];
   [_overlay removeFromSuperview];
   objc_setAssociatedObject(_window, kControllerKey, nil, OBJC_ASSOCIATION_RETAIN_NONATOMIC);
+  RefreshPinchesFromOtherApps();
 }
 
 - (void)roundCorners {
@@ -388,6 +398,8 @@ NSString *CornerName(int corner) {
 
 - (void)setStashedEdge:(ArdiaPiPEdge)edge {
   _stashedEdge = edge;
+  if (edge != ArdiaPiPEdgeNone) [ArdiaPiPZoom dropStandInOn:_window];
+  RefreshPinchesFromOtherApps();
   ArdiaPiPHandle *handle = _overlay.handle;
   if (edge != ArdiaPiPEdgeNone) {
     handle.edge = edge;

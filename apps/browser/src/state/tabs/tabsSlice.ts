@@ -1,3 +1,4 @@
+import { withEntry } from "../browser/changes";
 import type { StateCreator } from "zustand";
 import { startNavigation } from "./earlyNavigate";
 import { cloneId } from "./adoptIds";
@@ -16,10 +17,12 @@ import { mainWindowFor } from "../windows/small";
 import { holderOf, swapPinPage } from "../pins/pinShare";
 import { engineForUrl, tabEngine, typedNavigationEngine } from "../engines/engines";
 import type { ClosedTab, Tab, TabLive } from "../browser/types";
-import { activated, apply, closingTabs, withNewTab, type CloseOptions, type NewTabOptions } from "./tabs";
+import { activated, apply, closingTabs, removeTabs, withNewTab, type CloseOptions, type NewTabOptions } from "./tabs";
+import { splitOf } from "../splits/splits";
 import { hasPage, loadedPage, navigationOf, renavigated, wakeOf, withWake } from "./pageSession";
 import { cancelOpening, gateOpening, isGatedUrl, settleOpening } from "./openingGate";
 import { drainLive, setLive, stageLive } from "./tabLive";
+import { steppedTabId } from "./switchOrder";
 
 
 export type TabsSlice = {
@@ -27,7 +30,8 @@ export type TabsSlice = {
   closedTabs: ClosedTab[];
 
   newTab(windowId: string, options?: NewTabOptions): string;
-  closeTab(id: string): void;
+  closeTab(id: string, options?: CloseOptions): void;
+  removeEmptySplitPane(id: string): boolean;
   closeTabs(ids: string[], options?: CloseOptions): void;
   activate(id: string): void;
   handOffPin(id: string): void;
@@ -95,18 +99,26 @@ export const createTabsSlice: StateCreator<BrowserState, [], [], TabsSlice> = (s
     const beside = w && options?.newTabCommand && !options.openerId ? newTabPlacement(get(), w, options.profileId) : undefined;
     let [next, id] = withNewTab(get(), windowId, beside ? { ...options, ...beside } : options);
     const typed = beside && navigationOf(next.tabs[id]);
-    if (typed) next = { ...next, tabs: { ...next.tabs, [id]: { ...next.tabs[id]!, engine: engineForUrl(next, typed.url) } } };
+    if (typed) next = { ...next, tabs: withEntry(next.tabs, id, { ...next.tabs[id]!, engine: engineForUrl(next, typed.url) }) };
     if (id && options?.openerId) next = groupWithOpener(next, id, options.openerId, !!options.background);
     else if (id && beside) {
-      next = { ...next, tabs: { ...next.tabs, [id]: { ...next.tabs[id]!, linkOpenerId: undefined } } };
+      next = { ...next, tabs: withEntry(next.tabs, id, { ...next.tabs[id]!, linkOpenerId: undefined }) };
       next = joinedWithCurrent(next, [id], beside.openerId);
     }
     set(next);
     return id;
   },
 
-  closeTab(id) {
-    get().closeTabs([id], { lastClosesWindow: true });
+  closeTab(id, options) {
+    get().closeTabs([id], { lastClosesWindow: true, ...options });
+  },
+
+  removeEmptySplitPane(id) {
+    const s = get();
+    const tab = s.tabs[id];
+    if (!tab || tab.url || hasPage(tab) || !splitOf(s, id)) return false;
+    set(removeTabs(s, [id], false));
+    return true;
   },
 
   closeTabs(ids, options) {
@@ -146,10 +158,8 @@ export const createTabsSlice: StateCreator<BrowserState, [], [], TabsSlice> = (s
   },
 
   cycle(windowId, delta) {
-    const s = get();
-    const view = viewTabIds(s, windowId);
-    const i = view.indexOf(s.windows[windowId]?.activeTabIds[s.windows[windowId]!.profileId] ?? "");
-    if (view.length) get().activate(view[(i + delta + view.length) % view.length]!);
+    const next = steppedTabId(get(), windowId, delta);
+    if (next) get().activate(next);
   },
 
   navigate(id, input, { userInitiated = true, gated = false } = {}) {
@@ -188,7 +198,7 @@ export const createTabsSlice: StateCreator<BrowserState, [], [], TabsSlice> = (s
     const page = switching ? loadedPage(navigation) : renavigated(tab, navigation);
     const { chromeOpened: _, ...typed } = tab;
     const navigated = userInitiated ? typed : tab;
-    set(apply(base, { tabs: { ...base.tabs, [id]: { ...navigated, openerId: base.tabs[id]!.openerId, page, url: tab.url || url, ...(engine ? { engine } : {}) } } }));
+    set(apply(base, { tabs: withEntry(base.tabs, id, { ...navigated, openerId: base.tabs[id]!.openerId, page, url: tab.url || url, ...(engine ? { engine } : {}) }) }));
     const ui = get().windowUi[tab.windowId];
     if (ui?.panel.open) get().closePanel(tab.windowId);
   },
@@ -203,7 +213,7 @@ export const createTabsSlice: StateCreator<BrowserState, [], [], TabsSlice> = (s
     const next = merge(tab, url !== undefined && url !== tab.url ? { ...onUrlChange(s, tab, url), ...change } : change);
     if (livePatch) stageLive(id, livePatch);
     try {
-      if (next !== tab) set((s) => ({ tabs: { ...s.tabs, [id]: next } }));
+      if (next !== tab) set((s) => ({ tabs: withEntry(s.tabs, id, next) }));
     } finally {
       drainLive();
     }

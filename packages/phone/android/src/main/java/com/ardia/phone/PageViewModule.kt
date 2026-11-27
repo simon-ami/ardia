@@ -38,6 +38,8 @@ class SnapshotOptionsRecord : Record {
     @Field val quality: Int? = null
 
     @Field val coveredInsets: List<Double>? = null
+
+    @Field val windowCopy: Boolean? = null
 }
 
 class RequestAnswerRecord : Record {
@@ -80,8 +82,12 @@ class PageViewModule : Module() {
         }
 
         OnActivityEntersForeground {
-            appContext.currentActivity?.let(PhonePages::attach)
-            android.os.Handler(android.os.Looper.getMainLooper()).post { PhonePages.permissionAsks.pump() }
+            val activity = appContext.currentActivity
+            val main = android.os.Handler(android.os.Looper.getMainLooper())
+            ForegroundAttach.dispatch(android.os.Looper.myLooper() == android.os.Looper.getMainLooper(), main::post) {
+                if (activity != null && ForegroundAttach.stillHost(activity, appContext.currentActivity)) PhonePages.attach(activity)
+            }
+            main.post { PhonePages.permissionAsks.pump() }
         }
 
         OnActivityDestroys {
@@ -228,7 +234,7 @@ class PageViewModule : Module() {
         AsyncFunction("snapshot") Coroutine { pageId: String, options: SnapshotOptionsRecord ->
             withContext(Dispatchers.Main) {
                 val covered = options.coveredInsets?.takeIf { it.size == 2 }?.let { it[0] to it[1] }
-                PhonePages.snapshot(pageId, options.maxWidth ?: com.ardia.browser.Page.SNAPSHOT_WIDTH, options.quality ?: SNAPSHOT_QUALITY, covered)
+                PhonePages.snapshot(pageId, options.maxWidth ?: com.ardia.browser.Page.SNAPSHOT_WIDTH, options.quality ?: SNAPSHOT_QUALITY, covered, options.windowCopy ?: true)
             }
         }
 

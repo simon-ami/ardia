@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { BackHandler, FlatList, Keyboard, Pressable, SectionList, StyleSheet, Text, TextInput, View, type GestureResponderEvent } from "react-native";
+import { BackHandler, FlatList, Keyboard, SectionList, StyleSheet, Text, TextInput, View } from "react-native";
+import { Pressable, type PressableEvent } from "react-native-gesture-handler";
 import Animated, { runOnJS, useAnimatedStyle, useSharedValue } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { predictiveBack } from "@ardia/phone-native";
@@ -38,6 +39,9 @@ import { backSwipe, countMaterialBackSwipe, useMaterialRipple } from "../ui/Mate
 import { useMaterialTheme } from "../ui/materialTheme";
 import { materialDuration, materialMotion, materialMove, materialShape, materialSize, materialType } from "../ui/materialTokens";
 import { reducedMotionMs } from "../ui/motion";
+import { actionWords, listWords } from "../../lib/sharedWords";
+import { iconRoles } from "../ui/iconRoles";
+import { listSheetWords } from "./listSheetWords";
 
 const FOLDER = "folder:";
 const HIDE_FALLBACK_MS = 900;
@@ -185,7 +189,7 @@ function MaterialLibraryView({ open, onGone }: { open: boolean; onGone: () => vo
       haptics.warning();
       deleteAllDownloads();
     };
-    setConfirmation({ title: "Delete All Downloads?", message: "The files are removed from this phone.", action: "Delete All", run });
+    setConfirmation({ title: "Delete All Downloads?", message: "The files are removed from this phone.", action: listSheetWords.deleteAll, run });
   }, []);
   const searchable = LIBRARY_SEARCH_PROMPTS[section] !== null && folderKey === null;
   return (
@@ -233,10 +237,10 @@ function LibraryTopBar({ section, folderKey, onBack, onSearch, onDeleteAll, show
       {onDeleteAll ? (
         <IconButton
           testID="materialLibraryMore"
-          label="More"
-          icon="ellipsis"
+          label={actionWords.more}
+          icon={iconRoles.more}
           color={scheme.onSurfaceVariant}
-          onPress={(event) => showMenu([{ label: "Delete All", icon: "trash", destructive: true, disabled: !hasFiles, onPress: onDeleteAll }], event, true)}
+          onPress={(event) => showMenu([{ label: listSheetWords.deleteAllEntry, icon: "trash", destructive: true, disabled: !hasFiles, onPress: onDeleteAll }], event, true)}
         />
       ) : null}
     </View>
@@ -262,7 +266,7 @@ function LibrarySearchBar({ prompt, query, onQuery, onEnd }: { prompt: string; q
         autoCapitalize="none"
         style={[materialType.bodyLarge, styles.input, { color: scheme.onSurface }]}
       />
-      {query ? <IconButton testID="materialLibraryClear" label="Clear Text" icon="xmark" color={scheme.onSurfaceVariant} onPress={() => onQuery("")} /> : null}
+      {query ? <IconButton testID="materialLibraryClear" label={actionWords.clearText} icon="xmark" color={scheme.onSurfaceVariant} onPress={() => onQuery("")} /> : null}
     </View>
   );
 }
@@ -298,7 +302,7 @@ function LibraryTabs({ section }: { section: LibrarySection }) {
   );
 }
 
-type ListItemProps = { testID?: string; leading: ReactNode; headline: string; supporting?: string | null; trailing?: string | null; label?: string; hint?: string; onPress: () => void; onLongPress?: (event: GestureResponderEvent) => void };
+type ListItemProps = { testID?: string; leading: ReactNode; headline: string; supporting?: string | null; trailing?: string | null; label?: string; hint?: string; onPress: () => void; onLongPress?: (event: PressableEvent) => void };
 
 function ListItem({ testID, leading, headline, supporting, trailing, label, hint, onPress, onLongPress }: ListItemProps) {
   const { scheme } = useMaterialTheme();
@@ -352,7 +356,7 @@ function EmptyState({ icon, title, message }: { icon: SymbolName; title: string;
   );
 }
 
-const noResults = (query: string) => <EmptyState icon="magnifyingglass" title={`No Results for “${query.trim()}”`} message="Check the spelling or try a new search." />;
+const noResults = (query: string) => <EmptyState icon={iconRoles.noResults} title={listWords.noResults} message={listWords.noResultsCue(query.trim())} />;
 
 const pageFavicon = (url: string) => <Favicon iconUrl={null} pageUrl={url} size={materialSize.icon} />;
 
@@ -377,7 +381,7 @@ function HistoryList({ open, query, showMenu }: { open: boolean; query: string; 
   if (!entries.length) return <EmptyState icon="clockArrow" title="No History" message="Pages you visit here and on your Mac show up here." />;
   if (!shown.length) return noResults(query);
   return (
-    <SectionList
+    <SectionList bounces={false} overScrollMode="never"
       testID="materialLibraryHistory"
       sections={sections}
       keyExtractor={(entry) => entry.url}
@@ -397,7 +401,7 @@ function HistoryList({ open, query, showMenu }: { open: boolean; query: string; 
 function HistoryRow({ entry, showMenu }: { entry: HistoryEntry; showMenu: ShowMenu }) {
   const host = historyHost(entry.url);
   const time = clockTime(entry.visitedAt);
-  const items: MenuItem[] = [...(shareable(entry.url) ? [{ label: "Copy Link", icon: "link" as const, onPress: () => copyLink(entry.url) }] : []), { label: "Delete", icon: "trash", destructive: true, onPress: () => deleteHistoryEntry(entry) }];
+  const items: MenuItem[] = [...(shareable(entry.url) ? [{ label: actionWords.copyLink, icon: iconRoles.copyLink, onPress: () => copyLink(entry.url) }] : []), { label: "Delete", icon: "trash", destructive: true, onPress: () => deleteHistoryEntry(entry) }];
   return (
     <ListItem
       testID="materialLibraryHistoryRow"
@@ -444,7 +448,7 @@ function BookmarkList({ query, folderKey, showMenu }: { query: string; folderKey
   if (!bookmarks.length) return <EmptyState icon="star" title="No Bookmarks" message={enabled ? "Bookmarks you save on your Mac show up here." : "Sync with your Mac to see its bookmarks here."} />;
   if (!groups) return trimmed ? noResults(trimmed) : <EmptyState icon="folderFill" title="Empty Folder" />;
   return (
-    <SectionList
+    <SectionList bounces={false} overScrollMode="never"
       testID="materialLibraryBookmarks"
       sections={groups}
       keyExtractor={(item) => item.key}
@@ -487,7 +491,7 @@ function BookmarkRow({ item, showMenu }: { item: BookmarkItem; showMenu: ShowMen
         haptics.selection();
         openFromLibrary(url, item.title);
       }}
-      onLongPress={shareable(url) ? (event) => showMenu([{ label: "Copy Link", icon: "link", onPress: () => copyLink(url) }], event) : undefined}
+      onLongPress={shareable(url) ? (event) => showMenu([{ label: actionWords.copyLink, icon: iconRoles.copyLink, onPress: () => copyLink(url) }], event) : undefined}
     />
   );
 }
@@ -500,7 +504,7 @@ function DownloadList({ open, showMenu }: { open: boolean; showMenu: ShowMenu })
   }, [open]);
   const renderItem = useCallback(({ item }: { item: DownloadedFile }) => <DownloadRow file={item} showMenu={showMenu} />, [showMenu]);
   if (loaded && !files.length) return <EmptyState icon="arrowDownCircle" title="No Downloads" message="Files you download show up here." />;
-  return <FlatList testID="materialLibraryDownloads" data={files} keyExtractor={(file) => file.uri} renderItem={renderItem} initialNumToRender={14} windowSize={9} />;
+  return <FlatList bounces={false} overScrollMode="never" testID="materialLibraryDownloads" data={files} keyExtractor={(file) => file.uri} renderItem={renderItem} initialNumToRender={14} windowSize={9} />;
 }
 
 function DownloadRow({ file, showMenu }: { file: DownloadedFile; showMenu: ShowMenu }) {
@@ -516,7 +520,7 @@ function DownloadRow({ file, showMenu }: { file: DownloadedFile; showMenu: ShowM
       onLongPress={(event) =>
         showMenu(
           [
-            { label: "Share", icon: "squareAndArrowUp", onPress: () => shareDownload(file) },
+            { label: actionWords.share, icon: iconRoles.share, onPress: () => shareDownload(file) },
             { label: "Delete", icon: "trash", destructive: true, onPress: () => deleteDownload(file) },
           ],
           event,

@@ -10,8 +10,8 @@ Installs an extracted Ardia Linux package.
   --prefix DIR   absolute install prefix (default /usr)
   --destdir DIR  staging root for distribution packages (default none)
 
-Ardia goes under PREFIX/lib/ardia with PREFIX/bin/ardia, its desktop entry
-and icon. The new lib/ardia is copied beside the old one and swapped in with
+Ardia goes under PREFIX/lib/ardia with PREFIX/bin/ardia, its desktop entries
+(the hidden ones name Little Ardia, Settings and Import windows) and icon. The new lib/ardia is copied beside the old one and swapped in with
 renames (one atomic exchange where mv has --exchange), so a running Ardia keeps
 the files it has open and a failed copy leaves the old install whole. Run as root without --destdir, it makes lib/ardia/chrome-sandbox
 setuid root, Chromium's sandbox where user namespaces are unavailable. The polkit policy always goes to DESTDIR/usr/share/polkit-1/actions,
@@ -68,6 +68,8 @@ staged="$target/lib/ardia.new-$$"
 retired="$target/lib/ardia.old-$$"
 launcher=""
 
+pid_alive() { local why; [[ "$1" =~ ^[1-9][0-9]{0,9}$ ]] && (( $1 <= 2147483647 )) || return 1; why=$(LC_ALL=C; kill -0 "$1" 2>&1) || [[ "$why" == *"Operation not permitted"* ]]; }
+
 finish() {
   if [[ -e "$retired" && ! -e "$installed" && ! -L "$installed" ]]; then
     mv -T -- "$retired" "$installed" || true
@@ -81,7 +83,7 @@ install -d -m 0755 "$target/lib" "$target/bin" "$target/share/applications"
 for leftover in "$target"/lib/ardia.new-* "$target"/lib/ardia.old-*; do
   [[ -e "$leftover" || -L "$leftover" ]] || continue
   owner_pid=${leftover##*-}
-  if [[ "$owner_pid" =~ ^[0-9]+$ ]] && ! kill -0 "$owner_pid" 2>/dev/null; then
+  if [[ "$owner_pid" =~ ^[0-9]+$ ]] && ! pid_alive "$owner_pid"; then
     if [[ "$leftover" == */ardia.old-* && ! -e "$installed" && ! -L "$installed" ]]; then
       mv -T -- "$leftover" "$installed"
       continue
@@ -111,8 +113,10 @@ launcher=$(mktemp)
 printf '#!/usr/bin/env sh\nexec "%s/lib/ardia/ardia-launch" "$@"\n' "$prefix" > "$launcher"
 install -m 0755 "$launcher" "$target/bin/ardia"
 
-sed "s|^Exec=ardia |Exec=$prefix/bin/ardia |" "$source_root/share/applications/ardia.desktop" > "$launcher"
-install -m 0644 "$launcher" "$target/share/applications/ardia.desktop"
+for entry in "$source_root"/share/applications/ardia*.desktop; do
+  sed "s|^Exec=ardia |Exec=$prefix/bin/ardia |" "$entry" > "$launcher"
+  install -m 0644 "$launcher" "$target/share/applications/${entry##*/}"
+done
 
 icon=share/icons/hicolor/256x256/apps/ardia.png
 if [[ -f "$source_root/$icon" ]]; then
@@ -126,8 +130,11 @@ update_action_is_safe() {
   fi
   local runtime="$prefix/lib/ardia" folder uid mode
   [[ "$(readlink -f -- "$runtime")" == "$runtime" ]] || return 1
-  [[ -f "$runtime/ardia-update" && ! -L "$runtime/ardia-update" ]] || return 1
-  [[ "$(stat -c '%u %a' -- "$runtime/ardia-update")" == "0 755" ]] || return 1
+  local helper
+  for helper in ardia-update ardia-update-verify; do
+    [[ -f "$runtime/$helper" && ! -L "$runtime/$helper" ]] || return 1
+    [[ "$(stat -c '%u %a' -- "$runtime/$helper")" == "0 755" ]] || return 1
+  done
   folder=$runtime
   while :; do
     [[ -d "$folder" && ! -L "$folder" ]] || return 1

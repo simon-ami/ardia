@@ -43,8 +43,19 @@ extension WebKitTab: PageTab {
   }
 
   func fillWithPage() {
-    guard let webView, webView.frame != bounds else { return }
-    webView.frame = bounds
+    guard let webView else { return }
+    guard webView.superview !== self else {
+      if webView.frame != bounds { webView.frame = bounds }
+      return
+    }
+    for view in subviews where !(view is WKWebView) && view.frame != bounds { view.frame = bounds }
+    noteFullScreenFrameKept()
+  }
+
+  private func noteFullScreenFrameKept() {
+    guard pageMedia.fullscreen, !pageMedia.fullscreenFrameKept else { return }
+    pageMedia.fullscreenFrameKept = true
+    ArdiaEvents.emit("webKit.counted", data: ArdiaConsentStamp.begin().onto(["name": "fullscreenFrameKept"]))
   }
 
   func followInterfaceScale() {
@@ -104,6 +115,10 @@ extension WebKitTab: PageTab {
   func takeControlPress(clickAt: Double, control: Int) -> Bool { true }
 
   func exitPictureInPicture() { setPictureInPicture(false) { _ in } }
+
+  func armElementPick() -> Double { 0 }
+
+  func takeElementPick(_ armed: Double) -> Bool { false }
 
   func pageCookies(_ urls: [String], completion: @escaping ([[String: Any]]?) -> Void) {
     WebKitHub.shared.engineCookies(profile: profile, urls: urls.compactMap(URL.init(string:)), completion: completion)

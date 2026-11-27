@@ -1,6 +1,4 @@
 import {
-  getContentBlocker,
-  isContentBlockerAllowed,
   type SiteSettingType,
   type SiteSettingValue,
   type SiteSettings,
@@ -13,7 +11,6 @@ import { webviews } from "../../state/tabs/webviewHandles";
 import { currentEngineProfile } from "../../state/browser/current";
 import { useMuteState } from "../../state/tabs/hooks";
 import { openFind } from "../../state/find/actions";
-import { updateSettings } from "../../state/settings/actions";
 import { useCanSwitchEngine, useEngineRule, usePageEngine, useRecommendedEngine, useStreamingSite } from "../../state/engines/hooks";
 import { useSettings, useTab } from "../../state/browser/hooks";
 import { isIncognitoProfile, tabLabel } from "../../state/browser/model";
@@ -35,16 +32,16 @@ import { SectionLabel } from "../sidebar/SectionLabel";
 import { CertificateDetails, ConnectionChip, ConnectionRow } from "./SiteConnection";
 import { SiteExtensions } from "./SiteExtensions";
 import { TranslateRows } from "./TranslateControls";
-import { ReaderRow } from "./ReaderControls";
+import { ReaderLookRow, ReaderRow } from "./ReaderControls";
 import { ZoomStepper } from "./ZoomControls";
-import { blockerLabel, choiceTitle, featuredPermissions, permissionValue, readSiteSettings, setSitePermission, sitePermissionsFor, type SitePermission } from "../../state/site/siteControls";
+import { blockerLabel, choiceTitle, featuredPermissions, permissionValue, readSiteBlocker, readSiteSettings, setSitePermission, sitePermissionsFor, type SiteBlocker, type SitePermission } from "../../state/site/siteControls";
 import { isWebPageUrl } from "../../lib/url";
 import { PLATFORM_FEATURES } from "../../lib/platformFeatures";
 import { DEVELOPER_BAR_IN_CORE, canChooseDeveloperMode, setDeveloperMode, useDeveloperMode } from "../../state/site/developerMode";
+import { SiteSwitchRows } from "../plugins/SiteSwitchRows";
 import { ALL_UNREAD_TITLE, canChooseSiteUnread, isUnreadSiteHidden, setSiteUnreadShown, showUnreadCounts } from "../../state/tabs/unreadSites";
 
 type Expanded = "connection" | "more" | null;
-type Blocker = { enabled: boolean; allowed: boolean };
 
 export function SiteControlsPanel({
   tabId,
@@ -64,13 +61,12 @@ export function SiteControlsPanel({
   const tab = useTab(tabId);
   const security = usePage(tabId, (p) => p.security);
   const blocked = usePage(tabId, (p) => p.blocked);
-  const showFullUrl = useSettings((s) => s.showFullUrl);
   const unreadCounts = useSettings((s) => s.showUnreadCounts);
   const unreadHidden = useSettings((s) => isUnreadSiteHidden(s, tab?.url ?? ""));
   const developerMode = useDeveloperMode(tab?.url ?? "");
   const [settings, setSettings] = useState<SiteSettings | null>(null);
   const [featured, setFeatured] = useState<Set<SiteSettingType> | null>(null);
-  const [blocker, setBlocker] = useState<Blocker | null>(null);
+  const [blocker, setBlocker] = useState<SiteBlocker | null>(null);
   const [expanded, setExpanded] = useState<Expanded>(null);
   const [cleared, setCleared] = useState<string | null>(null);
   const shareTile = useRef<View>(null);
@@ -99,7 +95,7 @@ export function SiteControlsPanel({
       setSettings(s);
       setFeatured((f) => f ?? featuredPermissions(tabId, s, permissionList));
     });
-    void Promise.all([getContentBlocker(), isContentBlockerAllowed(host)]).then(([state, allowed]) => live && setBlocker({ enabled: state.enabled, allowed }));
+    void readSiteBlocker(host).then((b) => live && setBlocker(b));
     void webviews.get(tabId)?.getSecurityInfo().then((info) => live && info && patchPage(tabId, { security: info }));
     return () => {
       live = false;
@@ -236,6 +232,7 @@ export function SiteControlsPanel({
             {DEVELOPER_BAR_IN_CORE && canChooseDeveloperMode(url) && !privatePage ? (
               <SettingRow icon="hammer" title="Developer Mode" value={developerMode ? "On" : "Off"} on={developerMode} onPress={() => setDeveloperMode(url, !developerMode)} />
             ) : null}
+            <SiteSwitchRows tabId={tabId} url={url} />
             {engineChoice && switchable ? <SettingRow icon={ENGINE_SYMBOLS[pageEngine]} title="Opens in" value={opensIn} on={!!engineRule} onPress={() => void pickEngine()} /> : null}
             {shownPermissions.map((p) => (
               <SettingRow
@@ -282,6 +279,7 @@ export function SiteControlsPanel({
               <>
                 <MenuSeparator />
                 <ReaderRow tabId={tabId} onClose={close} />
+                <ReaderLookRow tabId={tabId} />
                 <TranslateRows tabId={tabId} onClose={close} />
                 {otherPermissions.map((p) => (
                   <MenuRow
@@ -307,11 +305,6 @@ export function SiteControlsPanel({
                 <MenuRow icon="app.badge" title={ALL_UNREAD_TITLE} detail="All sites" accessory={<Toggle look="panel" value={false} onChange={showUnreadCounts} />} />
               )
             ) : null}
-            <MenuRow
-              icon="text.alignleft"
-              title="Show Full URL"
-              accessory={<Toggle look="panel" value={showFullUrl} onChange={(v) => updateSettings({ showFullUrl: v })} />}
-            />
           </>
         ) : null}
 

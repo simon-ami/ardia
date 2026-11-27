@@ -201,6 +201,10 @@ final class FocusHandoff {
     countEditKeyAck(event.modifierFlags.contains(.option) ? "pasteMatchStyleOptionKeys" : "pasteMatchStyleKeys")
   }
 
+  func countTextFieldEdit(redo: Bool) {
+    countEditKeyAck(redo ? "textFieldRedos" : "textFieldUndos")
+  }
+
   private func countEditKeyAck(_ outcome: String) {
     ackLock.lock()
     editKeyAcks[outcome, default: 0] += 1
@@ -396,7 +400,9 @@ final class FocusHandoff {
         if selector == Selector(("pasteAndMatchStyle:")), !responder.responds(to: selector) {
           selector = #selector(NSTextView.pasteAsPlainText(_:))
         }
-        NSApp.sendAction(selector, to: responder, from: nil)
+        if !NSApp.sendAction(selector, to: responder, from: nil) {
+          PasteRefusal.reportMenuPaste(action, .refused, ["dropped": 1], stamp: ArdiaConsentStamp(epoch: epoch))
+        }
       }
     }
   }

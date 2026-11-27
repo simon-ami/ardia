@@ -5,14 +5,26 @@ export function displayUrl(url: string): string {
   return urlForDisplay(url).replace(/\/$/, "");
 }
 
-export const pageKey = (url: string) => url.replace(/#.*$/, "").replace(/\/$/, "");
+export const documentKey = (url: string) => {
+  const at = url.indexOf("#");
+  return (at < 0 ? url : url.slice(0, at)).replace(/\/$/, "");
+};
+
+export const routeOf = (url: string) => {
+  const at = url.indexOf("#");
+  return at >= 0 && (url.startsWith("#/", at) || url.startsWith("#!/", at)) ? url.slice(at) : "";
+};
+
+export const pageKey = (url: string) => documentKey(url) + routeOf(url);
 
 export const withRootSlash = (url: string) => url.replace(/^(https?:\/\/[^/?#]*)(?=[?#]|$)/i, "$1/");
 
 export type PageText = {
   url: string;
   key: string;
+  document?: string;
   shown: string;
+  shownClipped?: boolean;
   shownLower: string;
   titleLower: string;
   titleWords: string;
@@ -33,13 +45,28 @@ const PLAIN_WORDS = /^[a-z0-9]+(?: [a-z0-9]+)*$/;
 const wordsOf = (lower: string) => (PLAIN_WORDS.test(lower) ? ` ${lower}` : ` ${lower}`.replace(NOT_WORD, " "));
 export const shownWordsOf = (t: PageText) => (t.shownWords ??= wordsOf(t.shownLower));
 
+const MAX_INDEXED_SHOWN = 2048;
+const MAX_INDEXED_TITLE = 512;
+
+function clipIndexed(text: string, max: number): string {
+  if (text.length <= max) return text;
+  const last = text.charCodeAt(max - 1);
+  return text.slice(0, last >= 0xd800 && last <= 0xdbff ? max - 1 : max);
+}
+
 export function pageText(row: { url: string; title: string }): PageText {
   let text = pageTexts.get(row);
   if (!text) {
-    const shown = displayUrl(row.url);
+    const rawShown = displayUrl(row.url);
+    const shownClipped = rawShown.length > MAX_INDEXED_SHOWN;
+    const shown = shownClipped ? clipIndexed(rawShown, MAX_INDEXED_SHOWN) : rawShown;
     const shownLower = shown.toLowerCase();
-    const titleLower = row.title.toLowerCase();
-    text = { url: row.url, key: pageKey(row.url), shown, shownLower, titleLower, titleWords: wordsOf(titleLower) };
+    const titleLower = clipIndexed(row.title, MAX_INDEXED_TITLE).toLowerCase();
+    const document = documentKey(row.url);
+    const route = routeOf(row.url);
+    text = { url: row.url, key: document + route, shown, shownLower, titleLower, titleWords: wordsOf(titleLower) };
+    if (shownClipped) text.shownClipped = true;
+    if (route) text.document = document;
     pageTexts.set(row, text);
   }
   return text;

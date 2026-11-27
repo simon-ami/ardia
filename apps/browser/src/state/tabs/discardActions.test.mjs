@@ -88,3 +88,20 @@ for (const row of [false, true]) {
     assert.ok(S().tabs[pin].lastActiveAt > 20, "the close-selected tab becomes most recent");
   });
 }
+
+test("closing a tab skips a shared pin whose holder tab is sleeping", () => {
+  S().hydrate({});
+  useLifecycle.setState({ discarded: {} });
+  const w1 = S().createWindow({ url: "https://holder.example" });
+  const holder = active(w1);
+  S().pinTabs([holder], true);
+  const w2 = S().createWindow({ url: "https://regular.example" });
+  const regular = active(w2);
+  const shared = S().newTab(w2, { url: "https://holder.example", pinned: true, background: true });
+  S().updateTab(shared, { page: { kind: "frozen", tabId: holder }, pinKey: S().tabs[holder].pinKey, lastActiveAt: 50 });
+  S().updateTab(regular, { lastActiveAt: 10 });
+  const target = S().newTab(w2, { url: "https://target.example" });
+  useLifecycle.setState({ discarded: { [holder]: true } });
+  S().closeTab(target);
+  assert.equal(active(w2), regular);
+});

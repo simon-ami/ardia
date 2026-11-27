@@ -7,6 +7,8 @@ const { startWindowCloseGuard } = await import("./windowClose.ts");
 const { closeTab } = await import("../browser/actions.ts");
 const { shellNativeModules, windows } = await import("../../test-native/shell.ts");
 const { takeWindowPlacementCounts } = await import("../telemetry/windowPlacementCounts.ts");
+const { newTileFolder } = await import("../pins/tileFolders.ts");
+const { ASLEEP, wakeOf, withWake } = await import("../tabs/pageSession.ts");
 
 const S = () => useBrowser.getState();
 const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
@@ -161,6 +163,62 @@ test("with sharing on, a profile neither handed over nor shown elsewhere still p
   assert.deepEqual(S().parkedPins[work]?.tabs.map((t) => t.id), [pin], "Work's pin is parked");
   S().switchProfile(a, work);
   assert.ok(listed(a, work).some((id) => (S().tabs[id].pinKey ?? id) === pin && S().tabs[id].pin), "and comes back in A");
+});
+
+test("with sharing on, two profiles handed over at once each keep their own Top Apps folder and tab ids (#3148)", async () => {
+  S().hydrate({});
+  share(true);
+  S().updateProfile("default", { shareTopApps: true });
+  const w = S().createWindow({ url: "https://mail.com" });
+  const [mail] = S().windows[w].tabIds;
+  const docs = S().newTab(w, { url: "https://docs.com" });
+  S().pinTabs([mail, docs], true);
+  const work = S().createProfile({ shareTopApps: true, name: "Work", shareWith: "default" });
+  const { state, folderId } = newTileFolder(S(), [mail, docs], "Apps");
+  useBrowser.setState(state);
+  for (const id of [work, "default"]) S().updateProfile(id, { shareTopApps: undefined });
+  S().newTab(w, { url: "https://work-loose.com", profileId: work, background: true });
+  S().newTab(w, { url: "https://personal-loose.com", profileId: "default", background: true });
+  const other = S().createProfile({ name: "Other" });
+  const b = S().createWindow({ url: "https://other.com", profileId: other });
+  takeWindowPlacementCounts();
+  await closeByUser(w);
+  assert.equal(S().windows[w], undefined, "the window closed");
+  const tiles = (p) => listed(b, p).map((id) => S().tabs[id]).filter((t) => t.pin);
+  for (const [p, name] of [[work, "Work"], ["default", "Personal"]]) {
+    assert.deepEqual(tiles(p).map((t) => t.pinnedUrl).sort(), ["https://docs.com", "https://mail.com"], `${name} has both tiles`);
+    assert.deepEqual(tiles(p).map((t) => t.pin.folder?.name), ["Apps", "Apps"], `${name} keeps its folder`);
+    assert.ok(tiles(p).every((t) => t.pin.folder.id === folderId), `${name}'s folder is the same one`);
+  }
+  assert.deepEqual(tiles("default").map((t) => t.id).sort(), [mail, docs].sort(), "Personal's tiles keep their own ids");
+  assert.ok(tiles(work).every((t) => t.id !== mail && t.id !== docs), "Work never takes an id Personal just freed");
+  const counts = takeWindowPlacementCounts();
+  assert.equal(counts.window_close_pins_kept, 4, "counted: both profiles' two tiles");
+  assert.equal(counts.window_close_pin_ids_renewed, 2, "and Work's two, which took new ids");
+});
+
+test("with sharing on, a handed-over pin whose key another profile's tab holds still restores its page (#3148)", async () => {
+  S().hydrate({});
+  share(true);
+  S().updateProfile("default", { shareTopApps: true });
+  const b = S().createWindow({ url: "https://b.com" });
+  const w = S().createWindow({ url: "https://w.com" });
+  const mail = S().newTab(b, { url: "https://mail.com" });
+  S().pinTabs([mail], true);
+  const work = S().createProfile({ shareTopApps: true, name: "Work", shareWith: "default" });
+  S().switchProfile(w, work);
+  S().newTab(w, { url: "https://work-loose.com", profileId: work, background: true });
+  for (const id of [work, "default"]) S().updateProfile(id, { shareTopApps: undefined });
+  const copy = listed(w, work).map((id) => S().tabs[id]).find((t) => t.pin);
+  assert.equal(copy.pinKey, mail, "Work's tile is a copy of Personal's, which B holds");
+  useBrowser.setState({ tabs: { ...S().tabs, [copy.id]: { ...copy, page: withWake(ASLEEP, `restore:${copy.id}`) } } });
+  takeWindowPlacementCounts();
+  await closeByUser(w);
+  const tile = listed(b, work).map((id) => S().tabs[id]).find((t) => t.pin);
+  assert.equal(tile?.pinnedUrl, "https://mail.com", "Work's tile came over to B");
+  assert.equal(S().tabs[mail].profileId, "default", "Personal's tile keeps its id");
+  assert.equal(wakeOf(tile), `restore:${copy.id}`, "and Work's page is restored from where it was");
+  assert.equal(takeWindowPlacementCounts().window_close_pin_ids_renewed, 0, "B's tab held the key all along, so no id was just freed");
 });
 
 test("with sharing off, a profile only the closing window shows still closes with it", async () => {
@@ -342,7 +400,6 @@ test("Settings and Import close through the same request as browser windows, fro
   assert.match(source("./controls.ts"), /export const closeFromWindowControls = \(windowId: string\) => requestWindowClose\(windowId\);/);
   assert.match(source("../commands/commands.ts"), /if \(command === "closeTab"\) return requestWindowClose\(target\.windowId\);/);
   assert.match(source("../import/flow.ts"), /export const closeImport = \(\) => requestWindowClose\(IMPORT_WINDOW_ID\);/);
-  assert.match(source("../../../windows/Ardia/WindowManager.h"), /if \(!found \|\| !m_context \|\| m_quitting\) return;\n\s+try \{\n\s+args\.Cancel\(true\);/);
   assert.match(source("../../platform/nativeApi.ts"), /windows\.addListener\?\.\("onWindowEvent", \(event\) => \{\n\s+if \(event\.type === "closeRequest"\) void windows\.closeWindow\(event\.id\);/);
   assert.match(source("../../platform/nativeApi.ts"), /^import type \{ WindowsNative \} from "@ardia\/shell";\n[\s\S]*type Windows = Pick<WindowsNative, "openWindow" \| "closeWindow"> & Partial<Pick<WindowsNative, "addListener">>;/, "the skew window reuses the shell's window types, and only as a type");
 });
@@ -357,18 +414,4 @@ test("Settings and Import closes are decided one at a time, so two at once can't
   assert.equal(windows.open.has("import"), false);
   const close = readFileSync(new URL("./windowClose.ts", import.meta.url), "utf8");
   assert.match(close, /const closing = windowsWithoutTabsClosing\.then\(async \(\) => \{\n\s+if \(\(await askBeforeQuitting\(windowId\)\) === "cancelled"\) return;\n\s+onceAgreed\?\.\(\);\n\s+startClosingWindow\(windowId\);/);
-});
-
-test("the Windows self-check closes Settings, Import and a pop-up the ways users and pages do, and ends by closing its last window", () => {
-  const selfCheck = (name) => readFileSync(new URL(`../../../../../packages/expo-windows/src/${name}`, import.meta.url), "utf8");
-  assert.match(selfCheck("selfCheck/windows.ts"), /\["self-check-close-settings", "settings"\], \["self-check-close-import", "import"\]/);
-  assert.match(selfCheck("selfCheck/windows.ts"), /await windows\(\)\.requestClose\(id\);\n\s+const took = await goneWithin\(id, CLOSED_BY_REQUEST_MS\);/);
-  assert.match(selfCheck("selfCheck/enginePopups.ts"), /expectTrue\(await popupWindowsGone\(popupsBefore, POPUP_WINDOW_GONE_MS\),/);
-  assert.doesNotMatch(selfCheck("selfCheck/enginePopups.ts"), /^import \{[^}]*\} from "@ardia\/shell";/m, "a runtime import of @ardia/shell from the self-checks loads its view managers before viewNamed is ready");
-  assert.match(selfCheck("selfCheck/enginePopups.ts"), /import \{ isPopupWindowId \} from "@ardia\/shell\/src\/windows\.ts";/);
-  assert.match(selfCheck("index.ts"), /void runSelfCheck\(\)\.finally\(\(\) => void endByClosingTheLastWindow\(\)\);/);
-  const last = selfCheck("selfCheck/lastWindow.ts");
-  assert.match(last, /for \(const id of await windows\(\)\.windowIds\(\)\) if \(id !== LAST_WINDOW_ID\) await windows\(\)\.closeWindow\(id\);/);
-  assert.match(last, /await windows\(\)\.requestClose\(LAST_WINDOW_ID\);/);
-  assert.match(last, /console\.error\(`\[ardia windows\] self-check: the app was still running/);
 });

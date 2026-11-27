@@ -41,6 +41,7 @@ class PageView(context: Context, appContext: AppContext) : ExpoView(context, app
     private val host = FrameLayout(context)
     private var scope: CoroutineScope? = null
     private var sampled: PageTone? = null
+    private var sampledDocument = -1L
     private var sentTone: PageTone? = null
     private var toneSampledSinceBind = false
     private var failedId: String? = null
@@ -144,7 +145,7 @@ class PageView(context: Context, appContext: AppContext) : ExpoView(context, app
 
     private var drawnAskedAt = 0L
 
-    private val drawn = PageDrawnWatch(
+    private val drawn: PageDrawnWatch = PageDrawnWatch(
         object : DrawnSurface {
             override fun visible() = isShown && width > 0 && height > 0 && PageDrawnWatch.shownAlpha(this@PageView) > 0f
 
@@ -165,30 +166,30 @@ class PageView(context: Context, appContext: AppContext) : ExpoView(context, app
                 (PageDrawnWatch.webViewIn(host) ?: this@PageView).invalidate()
             }
         },
-    ) {
-        cover.pageDrawn()
-        lab { "page view ${page?.id ?: pageId} drawn ${SystemClock.uptimeMillis() - drawnAskedAt} ms after it became visible" }
-        onPageEvent(mapOf("name" to "drawn"))
+        document = { document.generation },
+    ) { drawnDocument ->
+        cover.pageDrawn(drawnDocument)
+        lab { "page view ${page?.id ?: pageId} drawn ${SystemClock.uptimeMillis() - drawnAskedAt} ms after it became visible, document $drawnDocument" }
+        onPageEvent(mapOf("name" to "drawn", "document" to drawnDocument.toDouble()))
     }
 
-    private val cover = CoverHandOver(
+    private val cover: CoverHandOver = CoverHandOver(
         object : CoverSurface {
             override fun find(nativeId: String): View? = com.facebook.react.uimanager.util.ReactFindViewUtil.findView(rootView, nativeId)
-
-            override fun schedule(millis: Long, run: () -> Unit): () -> Unit {
-                val task = Runnable(run)
-                postDelayed(task, millis)
-                return { removeCallbacks(task) }
-            }
         },
-    ) { reason, found ->
-        lab { "page view ${page?.id ?: pageId} hid its cover on ${if (reason == CoverHandOver.REASON_CAP) "the ${CoverHandOver.CAP_MILLIS} ms cap" else "its first drawn frame"}${if (found) "" else ", but no view had that nativeID"}" }
-        onPageEvent(mapOf("name" to "coverHidden", "reason" to reason, "found" to found))
+    ) { found, hiddenCover, hiddenDocument ->
+        if (!found) post { drawn.reset() }
+        lab { "page view ${page?.id ?: pageId} hid its cover on document $hiddenDocument's first drawn frame${if (found) "" else ", but no view had that nativeID"}" }
+        onPageEvent(mapOf("name" to "coverHidden", "reason" to "drawn", "found" to found, "cover" to hiddenCover, "document" to hiddenDocument.toDouble()))
     }
 
     var coverNativeId: String?
         get() = cover.nativeId
-        set(value) = cover.cover(value)
+        set(value) {
+            if (value == cover.nativeId) return
+            cover.cover(value)
+            drawn.reset()
+        }
 
     internal fun bands(): PageBands.Frame {
         val density = resources.displayMetrics.density
@@ -222,7 +223,6 @@ class PageView(context: Context, appContext: AppContext) : ExpoView(context, app
 
     init {
         setWillNotDraw(false)
-        drawn.onVisible = { cover.pageVisible() }
         addView(host, LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
         gestures.install()
     }
@@ -280,7 +280,6 @@ class PageView(context: Context, appContext: AppContext) : ExpoView(context, app
         insetSettlement.touching = false
         appliedObscuredInsets = obscuredInsets
         dismissSummary(animated = false)
-        cover.cancel()
         drawn.reset()
         page?.id?.let { PhonePages.viewLeaves(it, this) }
         scope?.cancel()
@@ -315,7 +314,6 @@ class PageView(context: Context, appContext: AppContext) : ExpoView(context, app
         viewTreeObserver.removeOnScrollChangedListener(pageScrolled)
         cancelInsetSettlement()
         insetSettlement.touching = false
-        cover.cancel()
         drawn.reset()
         super.onDetachedFromWindow()
     }
@@ -334,7 +332,9 @@ class PageView(context: Context, appContext: AppContext) : ExpoView(context, app
         }
         val owner = view.parent as? ViewGroup
         owner?.removeView(view)
+        android.os.Trace.beginSection("ardia:webview transfer")
         host.addView(view, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+        android.os.Trace.endSection()
         layOutChildren()
         lab {
             val from = if (owner != null) ", taken from another view (${owner.javaClass.simpleName}${(owner.parent as? PageView)?.let { " of page view ${it.pageId}" } ?: ""})" else ""
@@ -423,7 +423,7 @@ class PageView(context: Context, appContext: AppContext) : ExpoView(context, app
 
     private fun sendState(state: PageState) {
         documentChanged(document.saw(state.url, state.isLoading))
-        onPageEvent(present(mapOf("name" to "state") + PagePayloads.state(context, state, page?.isPrivate ?: isPrivate)))
+        onPageEvent(present(mapOf("name" to "state") + PagePayloads.state(context, state, page?.isPrivate ?: isPrivate) + ("document" to document.generation.toDouble())))
         sendTone(state)
     }
 
@@ -452,7 +452,10 @@ class PageView(context: Context, appContext: AppContext) : ExpoView(context, app
             val (top, bottom) = PageBands.toneOffsets((toneInsets.first * density).roundToInt() to (toneInsets.second * density).roundToInt(), bands())
             val taken = page.sampleTone(top, bottom)
             toneSampledSinceBind = true
-            if (taken != null) sampled = taken
+            if (taken != null) {
+                sampled = taken.over(sampled.takeIf { sampledDocument == document.generation })
+                sampledDocument = document.generation
+            }
             sendTone(page.state.value)
         }
     }
@@ -475,7 +478,13 @@ class PageView(context: Context, appContext: AppContext) : ExpoView(context, app
         if (!isShown) dismissSummary(animated = false)
     }
 
+    private var watchedDocument = Long.MIN_VALUE
+
     private fun documentChanged(generation: Long) {
+        if (generation != watchedDocument) {
+            watchedDocument = generation
+            drawn.reset()
+        }
         val session = summaryPresenter.session ?: return
         if (session.document == generation) return
         dismissSummary(animated = false)

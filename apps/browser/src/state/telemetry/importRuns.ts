@@ -6,6 +6,8 @@ let kindsDone = 0;
 let kindsFailed = 0;
 let secretsLeft = 0;
 let untitledBookmarks = 0;
+let bookmarksAlreadyThere = 0;
+let bookmarkFoldersReused = 0;
 let secretStops = 0;
 let diaProfilesMatched = 0;
 let diaProfilesWithoutFolder = 0;
@@ -33,6 +35,14 @@ export function noteImportRun(run: { done: number; failed: number; secretsLeft: 
 export function noteUntitledBookmarks(count: number, consent?: ConsentToken | null) {
   countFor(consentOrNow(consent), () => {
     untitledBookmarks += count;
+  });
+}
+
+export function noteRepeatBookmarks(run: { skipped: number; foldersReused: number }, consent?: ConsentToken | null) {
+  if (!run.skipped && !run.foldersReused) return;
+  countFor(consentOrNow(consent), () => {
+    bookmarksAlreadyThere += run.skipped;
+    bookmarkFoldersReused += run.foldersReused;
   });
 }
 
@@ -73,6 +83,34 @@ export function noteHistoryImport(batches: number, failed: number, consent?: Con
   });
 }
 
+type ImportCoreRead = { format: string; backend: string; outcome: string };
+
+const coreCounts = {
+  import_core_chromium_bookmarks_rust: 0,
+  import_core_chromium_bookmarks_native: 0,
+  import_core_chromium_bookmarks_unreadable: 0,
+  import_core_chromium_bookmarks_too_large: 0,
+};
+
+export function noteImportCore(reads: readonly ImportCoreRead[] | undefined, consent?: ConsentToken | null) {
+  const chromium = (reads ?? []).filter((read) => read.format === "chromium_bookmarks" && read.outcome !== "notFound");
+  if (!chromium.length) return;
+  countFor(consentOrNow(consent), () => {
+    for (const read of chromium) {
+      if (read.backend === "rust") coreCounts.import_core_chromium_bookmarks_rust += 1;
+      else coreCounts.import_core_chromium_bookmarks_native += 1;
+      if (read.outcome === "unreadable" || read.outcome === "argument") coreCounts.import_core_chromium_bookmarks_unreadable += 1;
+      if (read.outcome === "tooLarge") coreCounts.import_core_chromium_bookmarks_too_large += 1;
+    }
+  });
+}
+
+function takeImportCoreCounts() {
+  const taken = { ...coreCounts };
+  for (const key of Object.keys(coreCounts) as (keyof typeof coreCounts)[]) coreCounts[key] = 0;
+  return taken;
+}
+
 export function takeImportRuns() {
   const taken = {
     import_runs: runs,
@@ -80,6 +118,8 @@ export function takeImportRuns() {
     import_kinds_failed: kindsFailed,
     import_secrets_left: secretsLeft,
     import_untitled_bookmarks: untitledBookmarks,
+    import_bookmarks_already_there: bookmarksAlreadyThere,
+    import_bookmark_folders_reused: bookmarkFoldersReused,
     import_withheld: secretStops,
     import_dia_profiles_matched: diaProfilesMatched,
     import_dia_profiles_without_folder: diaProfilesWithoutFolder,
@@ -99,6 +139,8 @@ export function takeImportRuns() {
   kindsFailed = 0;
   secretsLeft = 0;
   untitledBookmarks = 0;
+  bookmarksAlreadyThere = 0;
+  bookmarkFoldersReused = 0;
   secretStops = 0;
   diaProfilesMatched = 0;
   diaProfilesWithoutFolder = 0;
@@ -112,7 +154,7 @@ export function takeImportRuns() {
   searchEngineOffersTaken = 0;
   historyImportCalls = 0;
   historyImportCallsFailed = 0;
-  return { ...taken, ...takeImportExtensionCounts() };
+  return { ...taken, ...takeImportExtensionCounts(), ...takeImportCoreCounts() };
 }
 
 const extensionCounts = {

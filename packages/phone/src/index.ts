@@ -8,6 +8,7 @@ export {
   legacy,
   legacyImport,
   legacyLab,
+  legacySettled,
   type LegacyCounts,
   type LegacyData,
   type LegacyRead,
@@ -22,7 +23,7 @@ export { closePage, pageObscuresInsets, pageReportsDrawn, PageView } from "./Pag
 export { pages, type AppRelease, type OffscreenCapture, type LaunchArgumentValue, type LaunchOptions, type SitePermissionGrant, type SitePermissionKind } from "./pages";
 export { keyboard, type KeyboardDidChange, type KeyboardWillChange } from "./keyboard";
 export { CompletingField, completingFieldIsNative, type CompletingFieldHandle, type CompletingFieldProps, type CompletionOffer } from "./completingField";
-export { announceNatively, focusViewNatively, screenReaderFocusIsNative, ScrollActions, type ScrollActionDirection, type ScrollActionsProps } from "./accessibility";
+export { announceNatively, focusViewNatively, handOverFocusNatively, screenReaderFocusIsNative, screenReaderHandOverIsNative, ScrollActions, type ScrollActionDirection, type ScrollActionsProps } from "./accessibility";
 export { FadeView, fadeIsNative, type FadeEdge, type FadeViewProps } from "./fade";
 export { PasteButton, pasteButtonIsNative, type PasteButtonProps } from "./pasteButton";
 export { NativeSymbol, nativeSymbolExists, nativeSymbolsAvailable, type NativeSymbolProps, type NativeSymbolWeight } from "./symbol";
@@ -33,7 +34,7 @@ export { forcedDuoCanvas, ScreenLayoutProbe, screenLayoutIsNative, type DuoCanva
 export * as settingsUI from "./settingsUI";
 export { sync } from "./sync";
 export { syncLab, type SyncRuntimeCheck } from "./syncLab";
-export { labLog, restorableState, system, systemLab, type SystemLink, type SystemLinkSource } from "./system";
+export { hardwareKeyboardShown, labFrameMark, labLog, labSlice, restorableState, system, systemLab, type SystemLink, type SystemLinkSource } from "./system";
 export { predictiveBack, TRAY_BACK_TRAVEL, trayBack, type PredictiveBackHandlers, type TrayBackHandlers } from "./back";
 export { scanLab, scanner, ScanView, type ScanError, type ScanPermission, type ScanViewProps } from "./scan";
 export { clipboard, type ClipboardOffer } from "./clipboard";
@@ -43,8 +44,13 @@ export {
   Frost,
   FrostSource,
   Glass,
+  GlassBackdrop,
+  FrameMark,
+  type FrameMarkProps,
   glassIsNative,
   INCOGNITO_LOOK,
+  nativeGlassRender,
+  type NativeGlassRender,
   lookIsNative,
   lookLab,
   type LookCounts,
@@ -54,10 +60,12 @@ export {
   type FrostProps,
   type FrostSourceProps,
   type FrostVariant,
+  type ClassicChrome,
   type GlassProps,
   type GlassShape,
   type GlassSurface,
   type LookColors,
+  type LookDynamicColor,
   type ProfileBackdropProps,
   type ThemeLook,
   type ThemeLookStop,

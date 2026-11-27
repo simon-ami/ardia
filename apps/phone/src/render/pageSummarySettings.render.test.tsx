@@ -31,7 +31,7 @@ const { renderSurface, textOf, unmount, withTabs } = require("../../test/render/
 const onAndroid = Platform.OS === "android" ? test : test.skip;
 const onIos = Platform.OS === "ios" ? test : test.skip;
 
-const titledHosts = (node: ReactTestInstance) => node.findAll((inner) => typeof inner.type === "string" && typeof inner.props.title === "string" && typeof inner.props.systemImage === "string").map((inner) => inner.props.title as string);
+const titledHosts = (node: ReactTestInstance) => node.findAll((inner) => typeof inner.type === "string" && typeof inner.props.text === "string").map((inner) => inner.props.text as string);
 const expoSummaryToggle = (root: ReactTestRenderer) => root.root.findAll((node) => typeof node.type === "string" && typeof node.props.isOn === "boolean").find((node) => titledHosts(node).includes("Pinch to Summarize"));
 
 let stored: "on_device" | "chatgpt" = "on_device";
@@ -103,7 +103,7 @@ onAndroid("without the native choice, as on iPhone, there is no Pinch to Summari
 });
 
 onAndroid("Settings lists Pinch to Summarize under Experimental as Off until it's turned on, and its page offers only the switch while off", async () => {
-  act(() => openSettings());
+  act(() => openSettings({ page: "experimental" }));
   const root = renderSurface(<SettingsView />);
   await act(async () => undefined);
   expect(textOf(root)).toContain("Pinch to Summarize");
@@ -135,7 +135,7 @@ onAndroid("turning it on saves it, shows On This Phone chosen, and says what cho
   expect(textOf(page)).not.toContain("key lines");
   expect(summarized).not.toHaveBeenCalled();
   unmount(page);
-  act(() => openSettings());
+  act(() => openSettings({ page: "experimental" }));
   const root = renderSurface(<SettingsView />);
   await act(async () => undefined);
   expect(textOf(root)).toContain("On This Phone");
@@ -254,7 +254,7 @@ onAndroid("a saved ChatGPT choice survives a disconnected account and the page o
 
 onIos("iPhone lists Pinch to Summarize as a switch under Experimental, off until turned on, and saves each change without summarizing anything", async () => {
   jest.spyOn(pages, "choosesSummaryProvider").mockReturnValue(false);
-  act(() => openSettings());
+  act(() => openSettings({ page: "experimental" }));
   const root = renderSurface(<SettingsView />);
   await act(async () => undefined);
   expect(expoSummaryToggle(root)!.props.isOn).toBe(false);
@@ -270,7 +270,7 @@ onIos("iPhone lists Pinch to Summarize as a switch under Experimental, off until
 
 onIos("an iPhone without the native switch shows no Pinch to Summarize row", async () => {
   switchable = false;
-  act(() => openSettings());
+  act(() => openSettings({ page: "experimental" }));
   const root = renderSurface(<SettingsView />);
   await act(async () => undefined);
   expect(expoSummaryToggle(root)).toBeUndefined();

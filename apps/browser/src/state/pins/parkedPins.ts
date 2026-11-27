@@ -1,14 +1,13 @@
 import type { BrowserState } from "../browser/store";
 import { ancestorIds, depthOf, orderSections, placeBlock, syncGroupOrder, withParent } from "../groups/groups";
-import { isIncognitoProfile, isPinnedRow, makeTab, newId, pinKeyOf, snapshotTab, TILE_PIN, without } from "../browser/model";
+import { isIncognitoProfile, isPinnedRow, makeTab, newId, pinHomeOf, pinKeyOf, snapshotTab, TILE_PIN, without } from "../browser/model";
 import { pendingRestore, restoreId } from "../tabs/adoptIds";
 import type { BrowserWindow, HistoryEntry, ParkedPins, Tab, TabGroup } from "../browser/types";
 import { samePage } from "../../lib/url";
 import { historyOf } from "../history/history";
 import { isRegularWindow } from "../windows/small";
 import { ASLEEP, withWake } from "../tabs/pageSession";
-import { mapSlotIds, slotTabIds, splitOf, splitTabIds } from "../splits/splits";
-
+import { mapSlotIds, normalized, slotTabIds, splitOf, splitTabIds } from "../splits/splits";
 
 type PinSource = Pick<BrowserState, "tabs" | "groups" | "history" | "profiles"> & Partial<Pick<BrowserState, "windows" | "splits">>;
 
@@ -18,8 +17,6 @@ function atPin(t: Tab, history: HistoryEntry[]): Partial<Pick<Tab, "url" | "titl
   const entry = history.find((h) => samePage(h.url, home));
   return { url: home, title: entry?.title ?? t.title, favicon: entry?.favicon ?? t.favicon };
 }
-
-const homeOf = (t: { url: string; pinnedUrl?: string | null }) => t.pinnedUrl || t.url;
 
 export function parkWindowPins(parked: Record<string, ParkedPins>, w: BrowserWindow, s: PinSource): Record<string, ParkedPins> {
   if (w.kind === "private") return parked;
@@ -78,18 +75,19 @@ export function parkWindowPins(parked: Record<string, ParkedPins>, w: BrowserWin
   return next;
 }
 
-export function adoptParkedPins(s: BrowserState, windowId: string, profileId: string): BrowserState {
+export function adoptParkedPins(s: BrowserState, windowId: string, profileId: string, before: Pick<BrowserState, "tabs"> = s): BrowserState {
   const park = s.parkedPins[profileId];
   const w = s.windows[windowId];
   if (!park || !w || w.kind === "private" || !s.profiles[profileId]) return s;
   const tabs = { ...s.tabs };
+  const taken = (id: string) => !!tabs[id] || (before.tabs[id]?.profileId ?? profileId) !== profileId;
   const held = new Map(w.tabIds.map((id) => tabs[id]).filter((t): t is Tab => !!t?.pin && t.profileId === profileId).map((t) => [pinKeyOf(t), t.id]));
   const keyOf = new Map<string, string>();
   const tabOf = new Map<string, string>();
   const added: string[] = [];
   const splitPanes = new Set((park.splits ?? []).flatMap((v) => splitTabIds(v)));
   for (const { id, groupId, restoreFrom, ...snap } of park.tabs) {
-    const home = homeOf(snap);
+    const home = pinHomeOf(snap);
     const heldId = groupId ? undefined : held.get(id);
     if (heldId) {
       if (splitPanes.has(id) && !splitOf(s, heldId)) tabOf.set(id, heldId);
@@ -97,8 +95,8 @@ export function adoptParkedPins(s: BrowserState, windowId: string, profileId: st
     }
     const tab: Tab = {
       ...makeTab(windowId, profileId, snap.url, { ...snap, profileId, pin: groupId ? null : (snap.pin ?? TILE_PIN), pinnedUrl: home || null }),
-      ...(tabs[id] ? { id: newId("tab"), pinKey: id } : { id }),
-      page: withWake(ASLEEP, restoreFrom && !tabs[id] ? restoreId(restoreFrom) : undefined),
+      ...(taken(id) ? { id: newId("tab"), pinKey: id } : { id }),
+      page: withWake(ASLEEP, restoreFrom && !taken(restoreFrom) ? restoreId(restoreFrom) : undefined),
     };
     tabs[tab.id] = tab;
     added.push(tab.id);
@@ -135,7 +133,7 @@ export function adoptParkedPins(s: BrowserState, windowId: string, profileId: st
     const panes = slots.flatMap(slotTabIds);
     if (!panes.every(Boolean)) continue;
     const id = newId("split");
-    splits = { ...splits, [id]: { id, windowId, orientation: v.orientation, slots } };
+    splits = { ...splits, [id]: normalized({ id, windowId, orientation: v.orientation, slots }) };
     order = placeBlock(order, order.filter((x) => panes.includes(x)));
   }
   const window = { ...w, tabIds: orderSections(order, tabs, groups) };

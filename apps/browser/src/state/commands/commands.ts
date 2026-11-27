@@ -1,13 +1,13 @@
 import { discardTabs } from "../tabs/discardActions";
 import { foreignWriteHooks } from "../browser/foreignWriteHooks";
-import { copyText } from "../../platform/clipboard";
+import { copyLink } from "../../platform/clipboard";
 import { openExternalURL } from "../../platform/app";
 import { pickFiles, prompt } from "../../platform/dialogs";
 import type { CommandEvent } from "../../platform/commands";
-import { markdownLink } from "@ardia/core";
+import { cleanLinkTitle, cleanUrl, cleanUrlReport, markdownLink, type CleanedTitle, type CleanedUrl } from "@ardia/core";
 import { useBrowser } from "../browser/store";
 import { requestCreateProfile } from "../profiles/createProfileRequest";
-import { activeTabId, bookmarkProfileId, isPinnedRow, resolveWindowId } from "../browser/model";
+import { activeTabId, bookmarkProfileId, isPinnedRow, resolveWindowId, tabLayoutOf } from "../browser/model";
 import {
   closeGroup,
   closeTab,
@@ -29,8 +29,8 @@ import { showHistory } from "../history/showHistory";
 import { openInternalPage } from "../pages/urls";
 import { openImport, openSettings } from "../settings/settingsWindows";
 import { focusSettingsSearch } from "../settings/searchState";
-import { closePanelToHeroBar, focusHeroBar } from "../omnibox/barState";
-import { closeNewTabBar, isEmptyCardTab, showNewTabBar, toggleNewTabBar } from "../omnibox/newTabBar";
+import { closePanelToHeroBar, dismissBarByCommandKey, focusHeroBar } from "../omnibox/barState";
+import { closeNewTabBar, commandKeyOpenedNewTabBar, dismissNewTabBarByCommandKey, isEmptyCardTab, showNewTabBarForCommandKey, toggleNewTabBar } from "../omnibox/newTabBar";
 import { NEW_TAB_BAR_POLICY } from "../omnibox/newTabBarPolicy";
 import { addressBarInSidebar } from "../windows/layout";
 import { commandKeyPlacement } from "../omnibox/barPlacement";
@@ -42,8 +42,8 @@ import { tabEngine } from "../engines/engines";
 import { runReaderCommand } from "../reader/reader";
 import { goBack, goForward } from "../tabs/navigation";
 import { awaitsFirstPage } from "../tabs/pendingAddress";
-import { focusSplitPane, openSplitPane } from "../splits/actions";
-import { switchTabLayout } from "../settings/actions";
+import { runSplitCommand } from "../splits/commands";
+import { chooseSidebarSide, switchTabLayout } from "../settings/actions";
 import { isAppCommand, settingChange, variantArg } from "./commandCatalog";
 import { APP_COMMAND_HANDLERS } from "./appCommands";
 import { runSidebarCommand } from "../sidebar/commands";
@@ -56,7 +56,6 @@ import { copyPageUrl, copySelectedTabUrls, jumpToSelection } from "../site/selec
 import { shareTab } from "../site/share";
 import { groupOf } from "../pins/tabGrouping";
 import { selectedTabIds } from "../pins/organize";
-import { noteSelectionClosedByKey } from "../telemetry/usage";
 import { noteUrlCopied } from "../telemetry/urlCopies";
 import { newWindowProfile, originalProfile } from "../windows/small";
 import { openLittleArdia } from "../littleArdia/actions";
@@ -68,11 +67,29 @@ import { runHidingCommand } from "../site/hiddenElements";
 import { requestWindowClose } from "../windows/windowClose";
 import { commandTarget } from "./commandTarget";
 import { runLittleArdiaCommand } from "./littleArdiaCommands";
+import { closeSelectionByKey } from "../sidebar/multiTabMenu";
+import { noteSelectionClosedByKey } from "../telemetry/usage";
+import type { ByUser } from "../tabs/closeActivation";
 
 const newOrId = (arg: string) => (arg === "new" ? null : arg);
+
+const LITTLE_ARDIA_BLOCKED_LAYOUT: ReadonlySet<string> = new Set([
+  "setTabLayout",
+  "toggleTabLayout",
+  "toggleSidebarSide",
+  "toggleSidebar",
+  "toggleAddressBar",
+  "toggleCompactToolbar",
+  "toggleFullUrl",
+  "toggleMinimalism",
+  "setBookmarksBar",
+  "toggleBookmarksBar",
+  "togglePinnedFold",
+]);
+
 export class NoCommandWindowError extends Error {}
 
-export function runCommand({ command, arg, windowId: given }: CommandEvent, { strictWindow = false, tabId: targetTab = null, mayWrite }: { strictWindow?: boolean; tabId?: string | null; mayWrite?: () => boolean } = {}) {
+export function runCommand({ command, arg, windowId: given }: CommandEvent, { strictWindow = false, tabId: targetTab = null, mayWrite, user }: { strictWindow?: boolean; tabId?: string | null; mayWrite?: () => boolean; user?: ByUser } = {}) {
   if (isAppCommand(command)) return APP_COMMAND_HANDLERS[command](given);
   const s = useBrowser.getState();
   const target = commandTarget(s, command, given, targetTab);
@@ -85,12 +102,16 @@ export function runCommand({ command, arg, windowId: given }: CommandEvent, { st
       if (command === "closeTab") return requestWindowClose(target.windowId);
       return focusSettingsSearch();
     case "little":
-      return void runLittleArdiaCommand(command, arg, target.windowId);
+      return void runLittleArdiaCommand(command, arg, target.windowId, user);
     case "peek":
-      return void runPeekCommand(command, target.windowId);
+      return void runPeekCommand(command, target.windowId, user?.consent ?? null);
   }
   const requested = target.invokedFrom;
   const targeted = target.targeted;
+  const invokedWindow = s.windows[resolveWindowId(s, requested) ?? ""];
+  if (invokedWindow?.kind === "small" && LITTLE_ARDIA_BLOCKED_LAYOUT.has(command)) return;
+  if ((command === "setBookmarksBar" || command === "toggleBookmarksBar") && invokedWindow?.kind === "private") return;
+  if (command === "toggleCompactToolbar" && (s.settings.minimalismMode || (invokedWindow && tabLayoutOf(s, invokedWindow.id) === "sidebar" && s.settings.addressBar === "sidebar"))) return;
   const settings = settingChange(command, arg, s.settings);
   if (settings) return s.updateSettings(settings);
 
@@ -155,8 +176,10 @@ export function runCommand({ command, arg, windowId: given }: CommandEvent, { st
   const page = tab?.url ? tab : undefined;
   const web = tabId ? webviews.get(tabId) : undefined;
   const ui = s.windowUi[windowId];
-  if (page && (runHidingCommand(command, page.id) || runReaderCommand(command, page.id, mayWrite))) return;
-  if (!targeted && runSidebarCommand(command, arg, windowId)) return;
+  if (page && (runHidingCommand(command, page.id) || runReaderCommand(command, page.id))) return;
+  if (!targeted && runSidebarCommand(command, arg, windowId, user)) return;
+  if (runSplitCommand(command, windowId, user)) return;
+
   switch (command) {
     case "newTab":
       if (toggleNewTabBar(windowId)) return;
@@ -167,8 +190,10 @@ export function runCommand({ command, arg, windowId: given }: CommandEvent, { st
       return arg ? s.restoreClosed(arg, windowId) : undefined;
     case "focusCommandBar": {
       const placement = commandKeyPlacement(s, windowId);
+      if (user && ui?.panel.open && ui.panel.newTab && commandKeyOpenedNewTabBar(ui.panel)) return dismissNewTabBarByCommandKey(windowId, user.consent);
+      if (user && tabId && ui?.panel.open && !ui.panel.newTab) return dismissBarByCommandKey(windowId, tabId, user.consent);
       if (page) return s.openPanel(windowId, page.url, undefined, placement);
-      if (isEmptyCardTab(s, tab) && showNewTabBar(windowId)) return;
+      if (isEmptyCardTab(s, tab) && showNewTabBarForCommandKey(windowId)) return;
       if (tab && addressBarInSidebar(s, windowId) && placement === "field") return s.openPanel(windowId, "", undefined, placement);
       if (!focusHeroBar(windowId, tabId)) return tab ? s.openPanel(windowId, "", undefined, placement) : undefined;
       return ui?.panel.open ? s.closePanel(windowId) : undefined;
@@ -178,23 +203,16 @@ export function runCommand({ command, arg, windowId: given }: CommandEvent, { st
       return void discardTabs(targeted ? [targeted] : selected.length ? selected : tabId ? [tabId] : []);
     }
     case "closeTab":
-      if (targeted) return void closeTab(targeted, mayWrite);
+      if (targeted) return void closeTab(targeted, { mayWrite, user });
       if (ui?.panel.newTab) {
         closeNewTabBar(windowId);
         if (NEW_TAB_BAR_POLICY.closeTabKeyOnlyDismissesBar || !tabId) return;
-        return void closeTab(tabId, mayWrite);
+        return void closeTab(tabId, { mayWrite, user });
       }
       if (ui?.panel.open) return tabId ? closePanelToHeroBar(windowId, tabId, "closeKey") : s.closePanel(windowId);
-      if ((s.selection[windowId]?.length ?? 0) > 1) {
-        const ids = selectedTabIds(s, windowId);
-        if (ids.length > 1) {
-          s.closeTabs(ids);
-          s.setSelection(windowId, []);
-          noteSelectionClosedByKey(ids.length);
-          return;
-        }
-      }
-      return tabId ? void closeTab(tabId, mayWrite) : undefined;
+      const closedSelection = closeSelectionByKey(windowId, user);
+      if (closedSelection) return void noteSelectionClosedByKey(closedSelection);
+      return tabId ? void closeTab(tabId, { mayWrite, user }) : undefined;
     case "print":
       return void web?.print();
     case "printWithSystemDialog":
@@ -205,9 +223,7 @@ export function runCommand({ command, arg, windowId: given }: CommandEvent, { st
       return void web?.runPageCommand("caretBrowsing");
     case "emailPageLocation":
       if (!page || !/^https?:/i.test(page.url)) return;
-      return void openExternalURL(
-        `mailto:?subject=${encodeURIComponent(page.customTitle || page.title || page.url)}&body=${encodeURIComponent(page.url)}`,
-      );
+      return void openExternalURL(emailPageLink(cleanLinkTitle(page.customTitle || page.title, page.url), cleanUrl(page.url)));
     case "stop":
       return void web?.stopLoading();
     case "share":
@@ -216,8 +232,8 @@ export function runCommand({ command, arg, windowId: given }: CommandEvent, { st
       return (!targeted && copySelectedTabUrls(s, windowId, false)) || !page ? undefined : void copyPageUrl(page.id);
     case "copyUrlAsMarkdown":
       if ((!targeted && copySelectedTabUrls(s, windowId, true)) || !page) return;
-      noteUrlCopied(awaitsFirstPage(page.id));
-      return copyText(markdownLink(page.customTitle || page.title, page.url));
+      noteUrlCopied(awaitsFirstPage(page.id), cleanUrlReport(page.url).removedTracker);
+      return copyLink(markdownLink(page.customTitle || page.title, page.url));
     case "findInPage":
       if (page) expectFocus(windowId, findFocus(page.id));
       return page ? openFind(page.id, { replace: false }) : undefined;
@@ -239,11 +255,15 @@ export function runCommand({ command, arg, windowId: given }: CommandEvent, { st
       return void (tabId && withLivePage(tabId, (page) => page.forceReload()));
     case "toggleTabLayout":
       return switchTabLayout(windowId);
-    case "openSplitPane":
-      return void openSplitPane(windowId);
-    case "focusNextPane":
-    case "focusPreviousPane":
-      return focusSplitPane(windowId, command === "focusNextPane" ? 1 : -1);
+    case "setTabLayout": {
+      const choice = variantArg("setTabLayout", arg);
+      if (!choice) return;
+      if (choice === "sidebarLeft") chooseSidebarSide("left");
+      else if (choice === "sidebarRight") chooseSidebarSide("right");
+      const want = choice === "top" ? "top" : "sidebar";
+      if (tabLayoutOf(useBrowser.getState(), windowId) !== want) switchTabLayout(windowId);
+      return;
+    }
     case "toggleSidebar":
       return s.toggleSidebar(windowId);
     case "zoomIn":
@@ -289,7 +309,7 @@ export function runCommand({ command, arg, windowId: given }: CommandEvent, { st
       return tab ? s.moveTabBy(tab.id, command === "moveTabDown" ? 1 : -1) : undefined;
     case "closeTabGroup": {
       const group = groupOf(s, tabId);
-      return group ? void closeGroup(group.id, mayWrite) : undefined;
+      return group ? void closeGroup(group.id, { mayWrite, user }) : undefined;
     }
     case "openProfileMenu":
       return s.windows[windowId]?.kind === "private" ? undefined : void openProfileMenu(windowId);
@@ -373,3 +393,5 @@ async function openFiles(windowId: string | null) {
     if (last) useBrowser.getState().activate(last);
   });
 }
+
+export const emailPageLink = (title: CleanedTitle, url: CleanedUrl) => `mailto:?subject=${encodeURIComponent(title || url)}&body=${encodeURIComponent(url)}`;

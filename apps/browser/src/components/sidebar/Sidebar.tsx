@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { ScrollView, StyleSheet, View } from "react-native";
 import { ClipView, ContextMenuArea, space, WindowDragRegion } from "../ui";
-import { layout, useTheme } from "../ui/theme";
+import { useTheme } from "../ui/theme";
 import { useSidebarHighContrast } from "../../state/sidebar/textLook";
 import { TintInk } from "../ui/TintInk";
 import { useWindowId, useWindowProfileId } from "../../state/browser/hooks";
@@ -9,7 +9,8 @@ import { useHasDownloads, useNoTiles } from "../../state/sidebar/hooks";
 import { collapsedSidebarHeader, useAddressBarInSidebar, useDownloadsInSidebarFooter, usePageFrameInset, useSidebarCaptionRoom, useSidebarHeaderCollapsed, useToolbarLightsCenter } from "../../state/windows/layout";
 import { closeAnchoredWhenControlsRowChanges } from "../../state/sidebar/controlsRowChange";
 import { DownloadsButton } from "../downloads/DownloadsButton";
-import { PROFILE_INDICATOR_X, ProfileIndicator } from "../profiles/ProfileIndicator";
+import { profileIndicatorX, ProfileIndicator } from "../profiles/ProfileIndicator";
+import { useWindowChrome } from "../../state/windows/windowButtons";
 import { usePagerPages } from "../../state/windows/profilePager";
 import { PROFILE_DOTS_HEIGHT, ProfileDots, useProfileDotsShown } from "../profiles/ProfileDots";
 import { SidebarAddressRow, SidebarHeaderTools } from "./AddressBar";
@@ -26,8 +27,8 @@ import { bottomFieldBand, SIDEBAR_FIELD, SIDEBAR_FIELD_BOTTOM, SIDEBAR_FOOTER_DO
 import { useNewTabAtTop, useSidebarField, useSidebarPart } from "../../state/sidebar/chrome";
 import { closeFolderPanel } from "../../state/sidebar/tileFolderUi";
 import { openSidebarMenu } from "../../state/sidebar/menus";
-import { GLOW_ROOM, rowPitch, type SidebarGeometry } from "./pageLayout";
-import { SidebarPage } from "./SidebarPage";
+import { GLOW_ROOM, type SidebarGeometry } from "./pageLayout";
+import { SidebarPages } from "./SidebarPages";
 import { sidebarText } from "./SidebarTextScope";
 import { SidebarRowLookContext, useSidebarRowLookSource } from "./rowLook";
 import { useRevealTabs } from "./useRevealTabs";
@@ -51,6 +52,8 @@ export function Sidebar({ width }: { width: number }) {
   const lightsY = useToolbarLightsCenter()[1];
   const field = useSidebarField();
   const captionRoom = useSidebarCaptionRoom();
+  useWindowChrome();
+  const indicatorX = profileIndicatorX();
   const collapsed = useSidebarHeaderCollapsed();
   const frame = usePageFrameInset();
   const header = collapsed && field !== "top" ? collapsedSidebarHeader(frame) : sidebarHeaderOf(addressBar, lightsY, field === "top");
@@ -107,23 +110,20 @@ export function Sidebar({ width }: { width: number }) {
               }}
               onLayout={(e) => setAvailable(e.nativeEvent.layout.height)}
             >
-              {pages.map((page) => (
-                  <SidebarPage
-                    key={page.id}
-                    profileId={page.id}
-                    slot={page.slot}
-                    paging={paging}
-                    width={width}
-                    current={page.id === current}
-                    resting={!!page.resting}
-                    canDock={canDock}
-                    height={Math.max(0, available - (field === "top" ? GLOW_ROOM : 0))}
-                    rows={page.id === current ? undefined : Math.ceil(available / rowPitch()) + 1}
-                    geometry={page.id === current ? geometry : undefined}
-                    onScrollView={onScrollView}
-                    onScrollY={onScrollY}
-                  />
-                ))}
+              <SidebarPages
+                windowId={windowId}
+                pages={pages}
+                paging={paging}
+                width={width}
+                current={current}
+                dragging={!!ghost}
+                canDock={canDock}
+                available={available}
+                topField={field === "top"}
+                geometry={geometry}
+                onScrollView={onScrollView}
+                onScrollY={onScrollY}
+              />
             </ClipView>
 
             <TintInk>
@@ -150,8 +150,8 @@ export function Sidebar({ width }: { width: number }) {
                     {field === "top" ? <SidebarAddressRow width={width} top={SIDEBAR_FIELD.top} /> : null}
                   </>
                 ) : collapsed ? null : (
-                  <View pointerEvents="box-none" style={{ height: header, flexDirection: "row", alignItems: "flex-start", paddingLeft: PROFILE_INDICATOR_X, paddingRight: HEADER_RIGHT + captionRoom, paddingTop: lightsY - 17 }}>
-                    {profileShown ? <ProfileIndicator room={width - PROFILE_INDICATOR_X - HEADER_RIGHT - captionRoom - (hasDownloads && !footerDownloads ? SIDEBAR_FOOTER_DOWNLOADS.size + 2 : 0)} /> : null}
+                  <View pointerEvents="box-none" style={{ height: header, flexDirection: "row", alignItems: "flex-start", paddingLeft: indicatorX, paddingRight: HEADER_RIGHT + captionRoom, paddingTop: lightsY - 17 }}>
+                    <ProfileIndicator room={width - indicatorX - HEADER_RIGHT - captionRoom - (hasDownloads && !footerDownloads ? SIDEBAR_FOOTER_DOWNLOADS.size + 2 : 0)} profileShown={profileShown} />
                     <View pointerEvents="none" style={{ flex: 1 }} />
                     {hasDownloads && !footerDownloads ? <DownloadsButton windowId={windowId} /> : null}
                   </View>

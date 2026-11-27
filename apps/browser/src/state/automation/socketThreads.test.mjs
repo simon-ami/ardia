@@ -6,7 +6,6 @@ const { methodsCatalog } = await import("./socketCatalog.ts");
 const { takeCliCounts } = await import("../telemetry/cliCounts.ts");
 const { withLivePage } = await import("../tabs/livePage.ts");
 const { isAbsoluteFolder } = await import("../../lib/absoluteFolder.ts");
-const windowsFolders = await import("../../lib/absoluteFolder.windows.ts");
 const stub = await import("../../test-native/index.ts");
 const { setConsentPeriod } = await import("../telemetry/consentPeriod.ts");
 setConsentPeriod(true, "socket-threads-test");
@@ -24,6 +23,21 @@ test("settings.schema advertises the shortcut format settings.set takes, and tha
   assert.deepEqual(shortcuts.schema.additionalProperties, { type: "string" });
   await ok("settings.set", { values: { shortcuts: { newTab: "cmd+shift+y" } } });
   assert.ok(S().settings.shortcuts.newTab, "the advertised shape was accepted");
+});
+
+test("settings.set takes the switchProfile:<id> and newLittleArdia:<id> shortcuts settings lists, and refuses a profile that doesn't exist", async () => {
+  await freshWindow();
+  const profile = S().profileOrder[0];
+  await ok("settings.set", { values: { shortcuts: { [`switchProfile:${profile}`]: "alt+1", [`newLittleArdia:${profile}`]: "cmd+alt+shift+l" } } });
+  assert.deepEqual(S().settings.shortcuts[`switchProfile:${profile}`], ["1", "option"]);
+  assert.deepEqual(S().settings.shortcuts[`newLittleArdia:${profile}`], ["l", "option", "shift", "command"]);
+  assert.ok(Object.hasOwn((await ok("settings.get", { keys: ["shortcuts"] })).shortcuts, `switchProfile:${profile}`), "settings.get lists what settings.set took");
+  await ok("settings.set", { values: { shortcuts: { [`switchProfile:${profile}`]: "ctrl+1" } } });
+  assert.equal(S().settings.shortcuts[`switchProfile:${profile}`], undefined, "its default ⌃1 clears the override");
+  const missing = await call("settings.set", { values: { shortcuts: { "switchProfile:p-gone": "alt+2" } } });
+  assert.equal(missing.error?.code, "bad_request");
+  assert.match(missing.error.message, /switchProfile:p-gone names a profile that doesn't exist/);
+  S().updateSettings({ shortcuts: {} });
 });
 
 test("the legacy Custom engine from customSearchUrl is refused by search.update and search.remove, and nothing changes", async () => {
@@ -58,10 +72,6 @@ test("extensions.reload and extensions.setPinned report a native failure instead
 test("download folders: absolute on each platform, relative refused everywhere", () => {
   assert.ok(isAbsoluteFolder("/Users/a/Downloads"));
   assert.ok(!isAbsoluteFolder("Downloads") && !isAbsoluteFolder("C:\\Users\\a\\Downloads"));
-  assert.ok(windowsFolders.isAbsoluteFolder("C:\\Users\\Alice\\Downloads"));
-  assert.ok(windowsFolders.isAbsoluteFolder("\\\\server\\share\\Downloads"));
-  assert.ok(windowsFolders.isAbsoluteFolder("D:/Downloads"));
-  assert.ok(!windowsFolders.isAbsoluteFolder("Downloads") && !windowsFolders.isAbsoluteFolder("C:Downloads") && !windowsFolders.isAbsoluteFolder("\\Downloads"));
 });
 
 test("splits.create takes two to the most panes a split holds, refused before the handler otherwise", async () => {

@@ -44,7 +44,7 @@ export type NowPlaying = {
 export type MediaCommand = "play" | "pause" | "toggle" | "next" | "previous" | "seekBy" | "seekTo" | "stop";
 export type MediaAccess = { camera: boolean; microphone: boolean; screen: boolean };
 
-export type OpenDisposition = "foreground" | "background" | "window" | "popup" | "incognito" | "current" | "split" | "peek";
+type OpenDisposition = "foreground" | "background" | "window" | "popup" | "incognito" | "current" | "split" | "peek";
 
 export type OpenWindowRequest = {
   url: string;
@@ -71,8 +71,10 @@ export type PageShare = {
   text?: string;
   fileUrl?: string;
 };
+export type PageMenuItem = { id: PageMenuCommand; title: string };
+export type PageMenuCommand = "translatePage" | "showOriginal";
 export type PageCommand = {
-  command: "search" | "ask" | "copyLinkToHighlight" | "escape" | "share" | "hideElement";
+  command: "search" | "ask" | "copyLinkToHighlight" | "escape" | "share" | "hideElement" | PageMenuCommand;
   text: string;
   point?: [number, number];
   modifiers?: { metaKey?: boolean; shiftKey?: boolean; altKey?: boolean; middle?: boolean };
@@ -83,8 +85,8 @@ export type LoadError = { url: string; code: number; text: string };
 export type NavigationEntry = { url: string; title: string; current: boolean };
 export type CrashInfo = { status: number; reason: "abnormal" | "killed" | "crashed" | "oom" | "launchFailed" | "integrity" | "unknown"; code: number };
 
-export type CertificatePrincipal = { commonName: string; displayName: string; organizations: string[]; country: string };
-export type Certificate = {
+type CertificatePrincipal = { commonName: string; displayName: string; organizations: string[]; country: string };
+type Certificate = {
   subject: CertificatePrincipal;
   issuer: CertificatePrincipal;
   validFrom: number;
@@ -119,17 +121,19 @@ export type WebNotification = {
   isMainFrame: boolean;
 };
 
-export type PictureInPictureShown = { kind: "video" | "document"; active: true; fullScreenSpaces: boolean; leftApp?: boolean; leftTab: boolean; epoch: string; closedBy?: "app" | "chrome"; auto?: boolean };
+type PictureInPictureShown = { kind: "video" | "document"; active: true; fullScreenSpaces: boolean; leftApp?: boolean; leftTab: boolean; epoch: string; closedBy?: "app" | "chrome"; auto?: boolean };
 export type PictureInPictureState = { kind: "video" | "document"; active: boolean; closedBy?: "app" | "chrome"; auto?: boolean } | PictureInPictureShown;
 export type PictureInPictureDrag = { offCursor: boolean; slowMove: boolean; epoch: string };
 export type PictureInPictureSkip = { seconds: number; epoch: string };
-export type PictureInPictureStandIn = { pinch: boolean; timedOut: boolean; epoch: string };
+export type PictureInPictureStandIn = { pinch: boolean; timedOut: boolean; unfocused: boolean; fromOtherApp: boolean; epoch: string };
 export type PictureInPictureUnstash = { epoch: string };
-export type PictureInPictureReleaseOutcome = "corner" | "flickTuck" | "tuck" | "pullOut" | "cornerPull" | "placed";
+type PictureInPictureReleaseOutcome = "corner" | "flickTuck" | "tuck" | "pullOut" | "cornerPull" | "placed";
 export type PictureInPictureRelease = { outcome: PictureInPictureReleaseOutcome; epoch: string };
 export type PictureInPictureActivation = { move: boolean; activated: boolean; epoch: string };
 export type PictureInPictureResize = { inside: boolean; cursorShown: boolean; epoch: string };
-export type AutoPictureInPictureHold = "onScreen" | "appSwitch" | "nothingPlaying";
+export const AUTO_PICTURE_IN_PICTURE_MISSES = ["missedTabSwitch", "missedAppSwitch", "missedSpaceSwitch", "missedOther", "missedSiteAsked", "leftOnSpaceSwitch", "leftOnSpaceSwitchJoining"] as const;
+export type AutoPictureInPictureMiss = (typeof AUTO_PICTURE_IN_PICTURE_MISSES)[number];
+type AutoPictureInPictureHold = "onScreen" | "appSwitch" | "nothingPlaying" | AutoPictureInPictureMiss;
 export type MediaFault = { reason: string; muted?: boolean; blockerActive?: boolean };
 export type ControlPress = { clickAt: number; control: number };
 export type ActivateRequest = { reason: "pictureInPicture" | "page" | "window"; fromOtherApp?: boolean };
@@ -173,7 +177,7 @@ export type AutofillPrompt = {
   oldLabel?: string;
 };
 export type AutofillPromptAnswer = "accept" | "decline" | "dismiss";
-export type ExtensionActionResult = "none" | "popup" | "sidePanel";
+type ExtensionActionResult = "none" | "popup" | "sidePanel";
 
 export type PageSelection = { text: string; rect: { x: number; y: number; width: number; height: number } };
 export type ScrollState = "down" | "up" | "top";
@@ -200,6 +204,7 @@ export type WebViewProps = ViewProps & {
   pageColor?: string;
   shownUrl?: string;
   autoPictureInPicture?: boolean;
+  pageMenuItems?: PageMenuItem[];
   onNavigationChange?: (state: NavigationState) => void;
   onProgress?: (progress: number) => void;
   onFavicon?: (url: string, candidates: string[]) => void;
@@ -285,6 +290,8 @@ export type WebViewHandle = {
   requestPictureInPicture(press: ControlPress): Promise<boolean>;
   takeControlPress(press: ControlPress): Promise<boolean>;
   exitPictureInPicture(): Promise<void>;
+  armElementPick?(): Promise<number | null>;
+  takeElementPick?(armed: number): Promise<boolean>;
 
   getSecurityInfo(): Promise<SecurityInfo | null>;
   pageCookies(urls: string[]): Promise<PageCookie[]>;

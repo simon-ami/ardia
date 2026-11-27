@@ -58,17 +58,39 @@ test("a malformed report leaves the reader state well-formed", async () => {
   assert.deepEqual(look(), ["medium", "serif"]);
 });
 
-test("opening the reader yourself keeps the look you set in it", async () => {
+test("a page can't set the look on the document where the user opened Reader", async () => {
   let reported = { active: false, readerable: true };
   const { tab } = openPlanted(() => reported);
   await wait(300);
   reported = { active: true, readerable: true, look: { dark: false, size: 3, font: "sans" } };
   await toggleReader(tab);
-  assert.deepEqual(look(), ["larger", "sans"]);
   reported = { active: true, look: { dark: false, size: 4, font: "sans" } };
   await wait(1300);
-  assert.deepEqual(look(), ["largest", "sans"]);
-  useBrowser.setState({ settings: DEFAULT_SETTINGS, settingsMeta: { chosen: [], inferred: [] } });
+  reported = { active: false, look: { dark: false, size: 0, font: "sans" } };
+  await toggleReader(tab);
+  assert.deepEqual(look(), ["medium", "serif"]);
+  assert.deepEqual(chosen(), []);
+});
+
+test("the browser's Reader Text controls set the look and send it to the open reader", async () => {
+  const { stepReaderSize, toggleReaderFont } = await import("./reader.ts");
+  let reported = { active: false, readerable: true };
+  const { tab, calls } = openPlanted(() => reported);
+  await wait(300);
+  reported = { active: true, readerable: true };
+  await toggleReader(tab);
+  stepReaderSize(1);
+  stepReaderSize(1);
+  toggleReaderFont();
+  assert.deepEqual(look(), ["larger", "sans"]);
+  for (let i = 0; i < 6; i++) stepReaderSize(1);
+  assert.equal(S().settings.readerTextSize, "largest");
+  for (let i = 0; i < 6; i++) stepReaderSize(-1);
+  assert.equal(S().settings.readerTextSize, "small");
+  await wait(20);
+  const pushed = calls.filter((c) => c.includes(".setLook("));
+  assert.ok(pushed.length > 0);
+  assert.ok(pushed.at(-1).includes('"size":0') && pushed.at(-1).includes('"font":"sans"'), pushed.at(-1));
 });
 
 test("the periodic state read writes nothing for a reader the user didn't open", async () => {
@@ -106,17 +128,17 @@ const reload = (tab) => {
   drainLive();
 };
 
-test("reloading the page ends the reader's right to keep the look it reports", async () => {
+test("a reload while Reader is open writes nothing the new page reports", async () => {
   let reported = { active: false, readerable: true };
   const { tab } = openPlanted(() => reported);
   await wait(300);
   reported = { active: true, readerable: true, look: { dark: false, size: 3, font: "sans" } };
   await toggleReader(tab);
-  assert.deepEqual(look(), ["larger", "sans"]);
+  assert.deepEqual(look(), ["medium", "serif"]);
   reload(tab);
-  reported = { active: true, readerable: true, look: { dark: false, size: 0, font: "serif" } };
+  reported = { active: true, readerable: true, look: { dark: false, size: 0, font: "sans" } };
   await wait(1700);
-  assert.deepEqual(look(), ["larger", "sans"]);
+  assert.deepEqual(look(), ["medium", "serif"]);
 });
 
 test("a toggle whose page is replaced while it runs keeps nothing", async () => {

@@ -36,6 +36,7 @@ const TOP = [
   ["sidebar", ["tabs.sidebarSide"]],
   ["right sidebar", ["tabs.sidebarSide"]],
   ["vertical tabs", ["tabs.layout"]],
+  ["tab menu button", ["tabs.showTabMenuButton"]],
   ["pinned", ["profiles.shareTopApps", "tabs.balancedTopApps", "tabs.strikeSleepingTabs", "tabs.fadeUnloadedTabs"]],
   ["strikethrough", ["tabs.strikeSleepingTabs"]],
   ["sleeping tabs", ["tabs.strikeSleepingTabs", "tabs.sleepingTabsInSwitcher"]],
@@ -56,9 +57,18 @@ const TOP = [
   ["alt tab", ["appearance.ctrlTab"]],
   ["ctrl tab", ["appearance.ctrlTab"]],
   ["control tab", ["appearance.ctrlTab", "tabs.sleepingTabsInSwitcher"]],
-  ["tab switcher", ["appearance.ctrlTab", "tabs.sleepingTabsInSwitcher"]],
+  ["tab switcher", ["appearance.ctrlTab", "appearance.tabSwitcherView", "tabs.sleepingTabsInSwitcher"]],
   ["switch tabs", ["appearance.ctrlTab"]],
   ["recent tabs", ["appearance.ctrlTab"]],
+  ["compact list", ["appearance.tabSwitcherView"]],
+  ["thumbnails", ["appearance.tabSwitcherView"]],
+  ["after closing a tab", ["appearance.afterClosingTab"]],
+  ["closing a tab", ["appearance.afterClosingTab"]],
+  ["tab above", ["appearance.afterClosingTab"]],
+  ["tab to the left", ["appearance.afterClosingTab"]],
+  ["tab below", ["appearance.afterClosingTab"]],
+  ["tab closing", ["appearance.afterClosingTab"]],
+  ["close behavior", ["appearance.afterClosingTab"]],
   ["address bar", ["appearance.addressBar"]],
   ["url bar", ["appearance.addressBar"]],
   ["command bar", ["appearance.commandBarPlacement"]],
@@ -74,6 +84,9 @@ const TOP = [
   ["extensions", ["profiles.extensions"]],
   ["font", ["advanced.chromeSettings"]],
   ["default zoom", ["advanced.chromeSettings"]],
+  ["⌘-scroll", ["advanced.commandScrollZoom"]],
+  ["mouse wheel", ["advanced.commandScrollZoom"]],
+  ["scroll zoom", ["advanced.commandScrollZoom"]],
   ["chrome settings", ["advanced.chromeSettings"]],
   ["preload", ["profiles.preloadPages"]],
   ["preload pages", ["profiles.preloadPages"]],
@@ -185,6 +198,14 @@ test("rows named by the query stay apart even when they share a place", () => {
   assert.ok(tabs.length >= 2, "several Layout rows say tabs in their names");
   assert.equal(first("command line"), "plugins.cli");
   assert.equal(first("devtools"), "advanced.ardiaCommand");
+});
+
+test("a lower-tier named row in the same section does not suppress a higher-tier unnamed match", () => {
+  const hits = search(SETTINGS_INDEX, "switch tabs");
+  assert.equal(hits[0]?.entry.id, "appearance.ctrlTab");
+  assert.ok(hits[0].tier > (hits.find((h) => h.entry.id === "appearance.afterClosingTab")?.tier ?? -1));
+  assert.equal(first("check for updates"), "general.autoUpdate");
+  assert.equal(first("corner radius"), "appearance.tabCornerRadius");
 });
 
 test("a pane's name finds that pane's rows", () => {
@@ -310,7 +331,8 @@ test("a row its pane doesn't draw is left out of search, by the same rule the pa
   for (const id of ["tabs.sidebarSide", "appearance.sidebarTextSize", "general.syncFolder", "automations.meetingAlert"]) assert.ok(!sidebar.has(id), id);
   for (const id of ["appearance.interfaceStyle", "appearance.glassTint"]) assert.ok(unshown({}, { top: false }).has(id), id);
   assert.ok(unshown({ interfaceStyle: "classic" }, { top: false, glass: true }).has("appearance.glassTint"));
-  assert.ok(unshown({ memorySaver: false }, { top: false }).has("advanced.keepActiveSites"));
+  assert.ok(unshown({ memorySaver: false, busyTabWarnings: false }, { top: false }).has("advanced.keepActiveSites"));
+  assert.ok(!unshown({ memorySaver: false, busyTabWarnings: true }, { top: false }).has("advanced.keepActiveSites"), "busy-tab warnings read the kept sites too");
   assert.ok(!unshown({ memorySaver: true }, { top: false }).has("advanced.keepActiveSites"));
   assert.ok(unshown({ newTabOpens: "commandBar" }, { top: false }).has("tabs.newTabUrl"));
   assert.ok(unshown({ cleanUpInactiveTabsAfterMinutes: 60 }, { top: false }).has("tabs.suggestCleanUp"));
@@ -324,6 +346,7 @@ test("a row its pane doesn't draw is left out of search, by the same rule the pa
   const webkitOnly = unshown({ engineMode: "webkit" }, { top: false });
   for (const id of ["advanced.pageEngine", "advanced.websiteEngines", "advanced.offerWebKitForProtectedVideo"]) assert.ok(webkitOnly.has(id), id);
   for (const id of ["general.engineMode", "advanced.enginesDiffer", "advanced.webKitFraudWarnings"]) assert.ok(!webkitOnly.has(id), id);
+  assert.ok(unshown({}, { top: false }).has("appearance.windowButtons"), "the Mac and Windows have no choice of window buttons");
 });
 
 const SHOWN_BY_LOADED_DATA = ["UpdatesSection.tsx: general.autoUpdate", "UpdatesSection.tsx: general.updateChannel"];
@@ -390,4 +413,24 @@ test("search leaves out the official plugins when Settings › Plugins doesn't d
   const bundled = unshown({ top: false, officialPlugins: ["cli"] });
   assert.ok(!bundled.has("plugins.cli"));
   assert.ok(!bundled.has("plugins.official"));
+});
+
+test("with Minimalism mode off, searching favicons or site logos still finds Minimalism tiles and says what it needs (#3609)", async () => {
+  const { unshownSettings } = await import("./settingsIndex.ts");
+  const { DEFAULT_SETTINGS } = await import("../../state/settings/settings.ts");
+  const { settingsResults } = await import("./SettingsSearch.tsx");
+  const unshown = new Set(unshownSettings({ ...DEFAULT_SETTINGS, minimalismMode: false }, { top: false }).split("\n").filter(Boolean));
+  assert.ok(unshown.has("appearance.minimalismPinnedIcons"), "the pane hides the row while Minimalism mode is off");
+  for (const query of ["favicons", "site logos", "letters"]) {
+    const hit = settingsResults(query, unshown).find((h) => h.entry.id === "appearance.minimalismPinnedIcons");
+    assert.ok(hit, query);
+    assert.equal(hit.entry.needs, "Turn on Minimalism mode to use this");
+  }
+  assert.equal(findSetting("appearance.minimalismPinnedIcons").description.includes("With Letters"), true);
+});
+
+test("searching for hiding or showing the control pill surfaces advanced.showCliPill", () => {
+  for (const query of ["show control pill", "hide control pill", "dismiss control pill"]) {
+    assert.ok(ids(query).includes("advanced.showCliPill"), query);
+  }
 });

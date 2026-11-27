@@ -9,14 +9,19 @@ import { openSettings } from "../../state/settings/hooks";
 import { useSyncEnabled } from "../../state/sync/hooks";
 import { countUsage } from "../../state/telemetry/telemetry";
 import { useHasTabs, useIncognito } from "../../state/tabs/hooks";
-import { chromeLayout, space, startLayout, startMotion, tabsCurve, tabsLayout, useReduceMotion, useTheme, type SymbolName } from "../ui";
-import { StartCircleButton, StartPlusButton } from "./StartBarButtons";
+import { actionWords, destinationWords } from "../../lib/sharedWords";
+import { chromeLayout, controlSize, FrostSource, GlassSource, space, START_FROST, startLayout, startMotion, tabsCurve, tabsLayout, useReduceMotion, useTheme, type SymbolName } from "../ui";
+import { StartCircleButton } from "./StartBarButtons";
+import { useUpdateDot } from "../../state/appUpdate/store";
+import { PlusMenuButton } from "../tabs/ChromeButtons";
 import { StartMark, StartSpaces, startBarCenterY, type StartGeometry } from "./StartSpaces";
 import { useBottomBarLayout } from "../ui/useBottomBarLayout";
+import { prepareArchive } from "../../state/tabs/store";
 import { barSpanCenter, besideStrip, DUO_BAR } from "../../lib/bottomBarSpan";
 
 export function StartPage() {
   const insets = useSafeAreaInsets();
+  const updateDot = useUpdateDot();
   const window = useWindowDimensions();
   const { width, height } = measuredOr(useRootSize(), window);
   const trayUp = useSearchOpen();
@@ -34,16 +39,16 @@ export function StartPage() {
   const contentStyle = useAnimatedStyle(() => ({ opacity: shown.value, transform: [{ scale: reduceMotion ? 1 : startMotion.trayScale + (1 - startMotion.trayScale) * shown.value }] }), [reduceMotion]);
   const barStyle = useAnimatedStyle(() => ({ opacity: shown.value }));
   const hidden = { pointerEvents: trayUp ? ("none" as const) : ("box-none" as const), importantForAccessibility: trayUp ? ("no-hide-descendants" as const) : ("auto" as const), accessibilityElementsHidden: trayUp };
-  const barTop = geometry.barCenterY - startLayout.barCircle / 2;
+  const barTop = geometry.barCenterY - controlSize.bar / 2;
   const { span: barSpan, strip } = useBottomBarLayout(width, chromeLayout.barSideInset);
   const plusMenuLeft = Math.min(Math.max(barSpanCenter(width, barSpan) - tabsLayout.menuWidth / 2, space.l), width - tabsLayout.menuWidth - space.l);
   const stripX = strip ? strip.centerX - DUO_BAR.button / 2 : 0;
   const leading = useStartLeading(incognito);
-  const tabs = <StartCircleButton icon={leading.icon} label={leading.label} testID={leading.testID} dark={dark} incognito={incognito} onPress={leading.onPress} />;
+  const tabs = <StartCircleButton icon={leading.icon} label={leading.label} testID={leading.testID} dark={dark} incognito={incognito} onPress={leading.onPress} onPressIn={leading.onPressIn} />;
   const plus = (
-    <StartPlusButton
+    <PlusMenuButton
       width={strip ? DUO_BAR.button : startLayout.barPlus.width}
-      label={incognito ? "New Incognito Tab" : "New Tab"}
+      label={incognito ? actionWords.newIncognitoTab : actionWords.newTab}
       testID="startBarPlus"
       dark={dark}
       incognito={incognito}
@@ -53,14 +58,17 @@ export function StartPage() {
   );
   return (
     <View testID="startPage" style={StyleSheet.absoluteFill}>
-      <StartSpaces geometry={geometry} dark={dark} incognito={incognito} interactive={!trayUp} />
-      <Animated.View testID="startContent" {...hidden} style={[styles.mark, { paddingBottom: height - barTop }, contentStyle]}>
-        <StartMark incognito={incognito} />
-      </Animated.View>
+      <FrostSource name={START_FROST} style={StyleSheet.absoluteFill} pointerEvents="box-none" collapsable={false}>
+        <StartSpaces geometry={geometry} dark={dark} incognito={incognito} interactive={!trayUp} />
+        <Animated.View testID="startContent" {...hidden} style={[styles.mark, { paddingBottom: height - barTop }, contentStyle]}>
+          <StartMark incognito={incognito} />
+        </Animated.View>
+      </FrostSource>
+      <GlassSource name={START_FROST}>
       <Animated.View testID="startBar" {...hidden} style={[styles.bar, { top: barTop, paddingLeft: barSpan.left, paddingRight: barSpan.right }, strip?.ends ? styles.barEnds : null, barStyle]}>
         {strip ? null : tabs}
         {strip ? null : plus}
-        <StartCircleButton icon="gearshape" label="Settings" testID="startBarSettings" dark={dark} incognito={incognito} onPress={() => openSettings()} />
+        <StartCircleButton icon="gearshape" label={destinationWords.settings} testID="startBarSettings" dark={dark} incognito={incognito} dot={updateDot} onPress={() => openSettings()} />
       </Animated.View>
       {strip ? (
         <>
@@ -72,11 +80,12 @@ export function StartPage() {
           </Animated.View>
         </>
       ) : null}
+      </GlassSource>
     </View>
   );
 }
 
-function useStartLeading(incognito: boolean): { icon: SymbolName; label: string; testID: string; onPress: () => void } {
+function useStartLeading(incognito: boolean): { icon: SymbolName; label: string; testID: string; onPress: () => void; onPressIn?: () => void } {
   const hasTabs = useHasTabs();
   const syncs = useSyncEnabled();
   if (hasTabs) return { icon: "squareOnSquare", label: "Tabs", testID: "startBarTabs", onPress: showDeck };
@@ -85,12 +94,12 @@ function useStartLeading(incognito: boolean): { icon: SymbolName; label: string;
     if (!incognito) countUsage("start_no_tabs_button_taps");
     open();
   };
-  return syncs ? { icon: "laptop", label: "Synced Tabs", testID: "startBarSynced", onPress } : { icon: "archivebox", label: "Archive", testID: "startBarArchive", onPress };
+  return syncs ? { icon: "laptop", label: destinationWords.spaces, testID: "startBarSynced", onPress } : { icon: "archivebox", label: destinationWords.archive, testID: "startBarArchive", onPress, onPressIn: prepareArchive };
 }
 
 const styles = StyleSheet.create({
   mark: { ...StyleSheet.absoluteFill, alignItems: "center", justifyContent: "center" },
-  bar: { position: "absolute", left: 0, right: 0, height: startLayout.barCircle, flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: startLayout.barGap },
+  bar: { position: "absolute", left: 0, right: 0, height: controlSize.bar, flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: startLayout.barGap },
   barEnds: { justifyContent: "flex-end" },
   strip: { position: "absolute", width: DUO_BAR.button, height: DUO_BAR.button, alignItems: "center", justifyContent: "center" },
 });

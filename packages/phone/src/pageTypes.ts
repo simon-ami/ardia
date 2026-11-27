@@ -1,4 +1,5 @@
 import type { ColorValue, ViewProps } from "react-native";
+import type { LookColors } from "./look";
 
 export type PageNavigationState = {
   url: string | null;
@@ -33,9 +34,10 @@ export type PageState = PageNavigationState & {
   blockedRequests: number;
   isLive: boolean;
   isPrivate: boolean;
+  document?: number;
 };
 
-export type PageTone = { top: string | null; bottom: string | null };
+export type PageTone = { top: string | null; bottom: string | null; barDark?: boolean };
 
 export type PageToneInsets = { top: number; bottom: number };
 
@@ -44,6 +46,8 @@ export type PageObscuredInsets = { top: number; bottom: number };
 export type PageObscuredColors = { top: ColorValue | null; bottom: ColorValue | null };
 
 export type PageError = { code: string; message: string };
+
+export type PageSummaryLook = LookColors & { dark: boolean };
 
 export type SwipeNavigation = "anywhere" | "edges" | "off";
 
@@ -58,6 +62,7 @@ export type PageViewProps = ViewProps & {
   toneInsets?: PageToneInsets;
   bottomInsetTransitionMs?: number;
   summaryBottomInset?: number;
+  summaryLook?: PageSummaryLook;
   obscuredInsets?: PageObscuredInsets;
   obscuredColors?: PageObscuredColors;
   topClearance?: number;
@@ -72,9 +77,9 @@ export type PageViewProps = ViewProps & {
   onPageState?: (state: PageState) => void;
   onPageTone?: (tone: PageTone) => void;
   onPageError?: (error: PageError) => void;
-  onPageDrawn?: () => void;
+  onPageDrawn?: (document?: number) => void;
   coverNativeId?: string;
-  onPageCoverHidden?: (reason: "drawn" | "cap", found: boolean) => void;
+  onPageCoverHidden?: (reason: "drawn" | "cap", found: boolean, cover?: string, document?: number) => void;
 };
 
 export type PageViewHandle = {
@@ -126,9 +131,9 @@ export type PageRequestAnswer =
   | { type: "takePhoto" }
   | { type: "recordVideo" };
 
-export type PageSummaryTrigger = "pinch" | "menu";
+type PageSummaryTrigger = "pinch" | "menu";
 
-export type PageSummaryOutcome = "chatgpt" | "on_device" | "excerpts" | "failed";
+type PageSummaryOutcome = "chatgpt" | "on_device" | "excerpts" | "failed";
 
 export type PageSummaryProvider = "on_device" | "chatgpt";
 
@@ -153,12 +158,15 @@ export type PageSnapshot = {
   uri: string;
   width: number;
   height: number;
-  route?: "draw" | "windowCopy" | "screenCopy" | "engine";
+  route?: "draw" | "windowCopy" | "screenCopy" | "engine" | "quiet";
   bytes?: number;
   kept?: boolean;
   durable?: boolean;
   generation?: number;
   frame?: { x: number; y: number; width: number; height: number } | null;
+  view?: number;
+  viewId?: number;
+  viewSettled?: boolean;
 };
 
 export type RefusedSnapshot = { refused: "hidden" | "blank" };
@@ -205,16 +213,19 @@ export type PageEngineEvent =
   | { name: "page.summaryOpened"; pageId: string; trigger: PageSummaryTrigger; isPrivate: boolean }
   | { name: "page.summarySettled"; pageId: string; trigger: PageSummaryTrigger; outcome: PageSummaryOutcome; chatGPTFellBack?: boolean; geminiNanoMissing?: string | null; isPrivate: boolean }
   | { name: "page.snapshotLanded"; pageId: string; uri: string; generation: number }
+  | { name: "page.scrollSettled"; pageId: string; y: number }
+  | { name: "page.viewMoved"; pageId: string; view: number; viewId: number }
   | { name: "page.externalAppMissing"; pageId: string; url: string }
   | { name: "page.desktop"; pageId: string; line: string }
-  | { name: "pages.privateSessionEnded" };
+  | { name: "pages.privateSessionEnded" }
+  | { name: "pages.webVideo"; outcome: "floated" | "keptPlaying"; isPrivate: boolean };
 
 export type PageEventPayload =
   | ({ name: "state" } & Partial<Omit<PageState, "url" | "title" | "progress" | "isLoading" | "canGoBack" | "canGoForward">> &
       Omit<PageNavigationState, "url"> & { url?: string })
-  | { name: "tone"; top?: string; bottom?: string }
-  | { name: "drawn" }
-  | { name: "coverHidden"; reason: "drawn" | "cap"; found: boolean }
+  | { name: "tone"; top?: string; bottom?: string; barDark?: boolean }
+  | { name: "drawn"; document?: number }
+  | { name: "coverHidden"; reason: "drawn" | "cap"; found: boolean; cover?: string; document?: number }
   | { name: "swipedPastHistory"; direction: PageSwipeDirection }
   | ({ name: "error" } & PageError);
 

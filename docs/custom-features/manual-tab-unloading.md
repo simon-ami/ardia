@@ -1,21 +1,13 @@
 # Native manual tab unloading and discard recovery
 
-- Status: native command manually validated; Auto Tab Discard remains unresolved.
-- Source: [fork PR #6](https://github.com/simon-ami/ardia/pull/6) and
-  [upstream issue #634](https://github.com/mantrakp04/ardia/issues/634).
-- Behavior: provide Unload Tab, Unload N Tabs, and configurable Unload Tab(s) in keyboard shortcuts/app menu,
-  with no default binding. Use native WebView discard; retain tab identity, rows, and navigation history.
-  Report native refusals.
-- Before unloading, select an awake same-window, same-space MRU page, excluding all targets. Open a new tab
-  if none exists; never remove targets or close the window. See [successor selection](cross-section-close-mru.md).
-- Apply recovery to extension discards only when their native event reaches the app. Background discards
-  do not change selection; ignore replacements in a different shared-data space.
-- Code: `apps/browser/src/state/tabs/discardActions.ts`, `components/window/TabWebView.tsx`, command catalog,
-  tab menus, and generated native command tables.
-- Checks: `state/tabs/discardActions.test.mjs` and close/menu cases under `apps/browser/src`.
-- Manual: unload one/multiple tabs; check replacement, retained rows, wake, Back history, and a bound shortcut.
-- Open: #634 is not proven fixed for the real extension path. Further extension debugging is deferred.
-
-- Replacement: `v0.2.47-nightly.9` adds Sleep Tab/Tabs for hidden Chromium pages and nested groups, with
-  proactive protections. Keep both actions. Unload switches away first and has a configurable shortcut.
-  The fork follows same-space extension activation and keeps recovery in that space.
+- Status: active; the user accepted menu placement, unloading, and reload on selection. Multi-tab, shortcut, and history checks remain unconfirmed. Auto Tab Discard remains unresolved.
+- Source: [fork PR #6](https://github.com/simon-ami/ardia/pull/6),
+  [upstream #634](https://github.com/mantrakp04/ardia/issues/634).
+- Behavior: provide `Unload Tab` (in `sleepItems` beside `Sleep Tab`), `Unload N Tabs` (multi-tab menu), and configurable `Unload Tab(s)` shortcuts with no default binding. Use native WebView discard; keep tab identity, rows, and history. Report native refusals.
+- Before unloading, select an awake same-window, same-space MRU page, excluding all targets; open a new tab if none exists. Never remove targets or close the window ([successor selection](cross-section-close-mru.md)).
+- Recover extension discards only when their native event reaches the app. Background discards keep selection unchanged; ignore replacements in another shared-data space.
+- Code: `apps/browser/src/state/tabs/discardActions.ts`, `components/window/TabWebView.tsx` (`leaveDiscardedTabs` within 400-line cap), `state/commands/commands.ts`, `state/sidebar/{tabMenu,multiTabMenu}.ts`, native command tables.
+- Checks: `state/tabs/discardActions.test.mjs`, `state/sidebar/menus.test.mjs`, `conventions.test.mjs` (`apps/browser/src`).
+- Manual: unload one/multiple tabs via menu and shortcut; check replacement, retained rows, wake, Back history, and bound shortcut.
+- Open: #634 is unproved on the real extension path; debugging is deferred.
+- Replacement: `v0.2.49` groups Sleep Tab/Tabs in `sleepItems` with proactive protections. Keep both actions; Unload switches first and has a configurable shortcut.

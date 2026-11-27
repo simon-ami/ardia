@@ -242,6 +242,10 @@ void AcceptDrops(NSView *root, BOOL accept) {
   [self schedulePainting];
 }
 
+- (NSArray<NSDictionary<NSString *, NSString *> *> *)pageMenuItems {
+  return _pageMenuItems ?: @[];
+}
+
 - (void)setAutoPictureInPicture:(BOOL)autoPictureInPicture {
   _autoPictureInPicture = autoPictureInPicture;
   [self autoPictureInPictureInputsChanged];
@@ -344,7 +348,14 @@ static BOOL gReportsCommits = NO;
 }
 
 + (void)setReportsCommits:(BOOL)reportsCommits {
+  const BOOL turnedOn = reportsCommits && !gReportsCommits;
   gReportsCommits = reportsCommits;
+  if (!turnedOn) return;
+  for (ArdiaWebView *view in LiveViews().allObjects) {
+    if (!view->_tab) continue;
+    view->_sent.navigation = nil;
+    [view emitNavigation];
+  }
 }
 
 + (int)browserIdOfTab:(NSString *)tabId {

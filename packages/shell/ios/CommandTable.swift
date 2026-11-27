@@ -15,6 +15,7 @@ enum CommandTable {
     case closeTab
     case unloadTabs
     case closeAllTabs
+    case closeDuplicateTabs
     case print
     case copyUrl
     case copyUrlAsMarkdown
@@ -27,14 +28,22 @@ enum CommandTable {
     case reload
     case forceReload
     case toggleTabLayout
+    case setTabLayout
     case toggleSidebarSide
     case toggleSidebar
+    case toggleCompactToolbar
+    case togglePinnedFold
     case openSplitPane
+    case openSplitPaneBelow
     case useSelectionForFind
     case findAndReplace
     case jumpToSelection
     case focusNextPane
     case focusPreviousPane
+    case moveSplitPaneLeft
+    case moveSplitPaneRight
+    case moveSplitPaneUp
+    case moveSplitPaneDown
     case toggleFullUrl
     case toggleJavaScriptFromAppleEvents
     case toggleAddressBar
@@ -86,6 +95,7 @@ enum CommandTable {
     case newGroupWithTabs
     case cleanUpTabs
     case tidyPins
+    case sortTabs
     case searchTabs
     case renameTab
     case changeTabIcon
@@ -131,6 +141,7 @@ enum CommandTable {
     "closeTab": "Close Tab",
     "unloadTabs": "Unload Tab(s)",
     "closeAllTabs": "Close All Tabs",
+    "closeDuplicateTabs": "Close Duplicate Tabs",
     "print": "Print…",
     "copyUrl": "Copy URL",
     "copyUrlAsMarkdown": "Copy URL as Markdown",
@@ -145,14 +156,24 @@ enum CommandTable {
     "reload": "Refresh",
     "forceReload": "Force Refresh the Page",
     "toggleTabLayout": "Show Tabs in Sidebar",
+    "setTabLayout:sidebarLeft": "Sidebar on Left",
+    "setTabLayout:sidebarRight": "Sidebar on Right",
+    "setTabLayout:top": "Top Tab Bar",
     "toggleSidebarSide": "Sidebar on Right",
     "toggleSidebar": "Auto-Hide Tabs",
+    "toggleCompactToolbar": "Compact Toolbar",
+    "togglePinnedFold": "Collapse Pinned Tabs",
     "openSplitPane": "Open Split Pane",
+    "openSplitPaneBelow": "Open Split Pane Below",
     "useSelectionForFind": "Use Selection for Find",
     "findAndReplace": "Find and Replace…",
     "jumpToSelection": "Jump to Selection",
     "focusNextPane": "Focus Next Split Pane",
     "focusPreviousPane": "Focus Previous Split Pane",
+    "moveSplitPaneLeft": "Move Split Pane Left",
+    "moveSplitPaneRight": "Move Split Pane Right",
+    "moveSplitPaneUp": "Move Split Pane Up",
+    "moveSplitPaneDown": "Move Split Pane Down",
     "toggleFullUrl": "Show Full URL",
     "toggleJavaScriptFromAppleEvents": "Allow JavaScript from Apple Events",
     "toggleAddressBar": "Show Address Bar in Sidebar",
@@ -207,6 +228,8 @@ enum CommandTable {
     "newGroupWithTabs": "New Group with Tab",
     "cleanUpTabs": "Clean Up Tabs",
     "tidyPins": "Tidy Pins",
+    "sortTabs:site": "Sort Tabs by Site",
+    "sortTabs:title": "Sort Tabs by Title",
     "searchTabs": "Search Tabs…",
     "renameTab": "Rename…",
     "changeTabIcon": "Change Icon…",
@@ -263,11 +286,16 @@ enum CommandTable {
     "toggleTabLayout": [("s", [.shift, .command])],
     "toggleSidebar": [("s", [.command]), ("l", [.shift, .command]), ("f", [.shift, .command])],
     "openSplitPane": [("=", [.control, .shift]), ("+", [.control])],
+    "openSplitPaneBelow": [("-", [.control, .shift]), ("_", [.control])],
     "useSelectionForFind": [("e", [.command])],
     "findAndReplace": [("f", [.option, .command])],
     "jumpToSelection": [("j", [.command])],
     "focusNextPane": [("]", [.control, .shift]), ("}", [.control])],
     "focusPreviousPane": [("[", [.control, .shift]), ("{", [.control])],
+    "moveSplitPaneLeft": [("\u{F702}", [.control, .option])],
+    "moveSplitPaneRight": [("\u{F703}", [.control, .option])],
+    "moveSplitPaneUp": [("\u{F700}", [.control, .option])],
+    "moveSplitPaneDown": [("\u{F701}", [.control, .option])],
     "toggleMinimalism": [("m", [.control, .command])],
     "zoomReset": [("0", [.command])],
     "zoomIn": [("+", [.command]), ("=", [.command])],

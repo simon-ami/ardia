@@ -22,8 +22,7 @@ final class WebKitTabSafety {
   var interstitial: WebKitInterstitial?
   var errorTitle = ""
   var pageColor: String?
-  var backdrop: NSColor?
-  var awaitingFirstPaint = false
+  var backdrop = WebKitPageBackdrop()
   let dialogs = WebKitPageDialogs()
   var blockedPopups: [String: BlockedPopup] = [:]
   var lastPopup = 0
@@ -271,7 +270,7 @@ extension WebKitTab {
   }
 
   static func upgradesToHTTPS(host: String, port: Int?) -> Bool {
-    guard port == nil || port == 80, !WebKitCertificates.isIPAddress(host), host.contains(".") else { return false }
+    guard port == nil || port == 80, !WebKitPreloadedHSTS.isIPAddress(host), host.contains(".") else { return false }
     let reserved = [".local", ".localhost", ".test", ".example", ".invalid", ".internal", ".lan", ".home.arpa"]
     return !reserved.contains { host.hasSuffix($0) }
   }
