@@ -7,6 +7,7 @@ import { fileURLToPath } from "node:url";
 const REPO = fileURLToPath(new URL("../../", import.meta.url));
 const WORKFLOWS = join(REPO, ".github/workflows");
 const BLACKSMITH = /^blacksmith-(2|4|8|16|32)vcpu-ubuntu-2404(-arm)?$|^blacksmith-(6|12)vcpu-macos-(latest|27|26|15)$/;
+const PERSONAL_CI = new Set(["ubuntu-latest", "macos-26"]);
 const GITHUB_WINDOWS = new Set(["windows-latest", "windows-11-arm"]);
 
 function workflows() {
@@ -25,12 +26,12 @@ function runnerLabels(text) {
   return labels;
 }
 
-test("every job runs on Blacksmith, except Windows, which stays on GitHub", () => {
+test("upstream jobs use Blacksmith or GitHub Windows; personal CI uses GitHub runners", () => {
   const seen = new Set();
   for (const { name, text } of workflows()) {
     for (const label of runnerLabels(text)) {
       seen.add(label);
-      assert.ok(BLACKSMITH.test(label) || GITHUB_WINDOWS.has(label), `${name} runs on ${label}, which is neither a Blacksmith label nor a GitHub Windows one`);
+      assert.ok(BLACKSMITH.test(label) || GITHUB_WINDOWS.has(label) || (name === "ci.yml" && PERSONAL_CI.has(label)), `${name} runs on ${label}, which is neither a Blacksmith label nor a GitHub Windows one`);
     }
   }
   assert.ok(seen.has("blacksmith-2vcpu-ubuntu-2404") && seen.has("blacksmith-12vcpu-macos-27") && seen.has("windows-11-arm"), "the scan finds the workflows' labels");

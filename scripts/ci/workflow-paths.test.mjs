@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, posix, relative } from "node:path";
@@ -85,7 +86,10 @@ function repoPathsNamedIn(files, root = REPO) {
       if (existsSync(join(root, clean))) named.add(statSync(join(root, clean)).isDirectory() ? `${clean}/` : clean);
     }
   }
-  return [...named].sort();
+  const paths = [...named].sort();
+  if (root !== REPO || paths.length === 0) return paths;
+  const tracked = execFileSync("git", ["ls-files", "-z"], { cwd: root, encoding: "utf8" }).split("\0");
+  return paths.filter((path) => path.endsWith("/") ? tracked.some((file) => file.startsWith(path)) : tracked.includes(path));
 }
 
 function assertRepoJobStartsOnNamedPaths(repo, files, root = REPO) {

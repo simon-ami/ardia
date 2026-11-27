@@ -136,7 +136,7 @@ jobs:
               - "apps/browser/official-plugins-history.json"
               - "apps/browser/macos/Ardia.xcodeproj/project.pbxproj"
               - "apps/browser/macos/Ardia-macOS/Info.plist"
-              - "packages/ardiacore/ios/ArdiaLaunchConfig.mm"
+              - "packages/ardiacore/ios/**"
               - "packages/sync/ios/Core/LegacyMigration.swift"
               - "packages/shell/ios/PluginCore/PluginSandbox.swift"
               - "packages/shell/ios/PluginProcess.swift"
