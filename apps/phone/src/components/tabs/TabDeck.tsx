@@ -1,17 +1,20 @@
-import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from "react";
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ComponentProps, type ReactNode, type RefObject } from "react";
 import { DeckLookProbe } from "./DeckLookProbe";
+import { deckHitAccepted, newTab as openNewTab, switchDeckIncognito } from "../../state/browse/store";
+import { actionWords, destinationWords, incognitoWords } from "../../lib/sharedWords";
+import { IncognitoLook } from "../ui/theme";
+import { GlassPrivacy } from "../ui/LookViews";
 import { useDeckOwnsBar, useSheet, useSurface } from "../../state/browse/hooks";
 import { useHeldDeckOrder, useHeldRootSize, useHeldSearchOpen } from "../../state/browse/deckHold";
-import { beginInteraction, countRender, INTERACTION_WINDOW_MS, interactionPerfEnabled } from "../../state/app/interactionPerf";
+import { beginInteraction, countRender, INTERACTION_WINDOW_MS, interactionPerfEnabled, markNextUiFrame, markTiming } from "../../state/app/interactionPerf";
 import { Keyboard, Platform, StyleSheet, useWindowDimensions, View, type ViewInstance } from "react-native";
 import type { Rect } from "../../lib/menuPlace";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
-import Animated, { cancelAnimation, Easing, runOnJS, runOnUI, useAnimatedReaction, useAnimatedStyle, useDerivedValue, useSharedValue, withSpring, withTiming, type SharedValue } from "react-native-reanimated";
-import { pictureKey, whenPicturePainted } from "../../lib/shownSnapshots";
+import Animated, { cancelAnimation, Easing, runOnJS, runOnUI, useAnimatedProps, useAnimatedReaction, useAnimatedStyle, useDerivedValue, useSharedValue, withSpring, withTiming, type SharedValue } from "react-native-reanimated";
 import { countUsage } from "../../state/telemetry/telemetry";
 import { haptics } from "../../state/app/haptics";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { labTrace } from "../../platform/lab";
+import { labTrace, markShownFrame, traceSlice } from "../../platform/lab";
 import { measuredOr } from "../../state/app/rootSize";
 import {
   DECK,
@@ -51,9 +54,9 @@ import {
   closeTabFromDeck,
   stayIncognito,
   consumeDeckEntrance,
-  deckEntranceCapture,
   peekDeckEntrance,
   deckEntered,
+  deckMotionDone,
   leaveIncognito,
   newIncognitoTab,
   newRegularTab,
@@ -67,10 +70,12 @@ import {
   useBrowse,
   whenPageCoverHidden,
   whenPageLaidOut,
+  noteCutCard,
+  clearCutCard,
 } from "../../state/browse/store";
 import { menuOpenedHaptic } from "../../state/browse/tabMenus";
 import { useCanReopen, useHasArchivedTabs, useIncognito, usePrivateCount, useShownSpace } from "../../state/tabs/hooks";
-import { archiveCardLayout, chromeLayout, ConfirmSheet, deckChromeLayout, DeckLookBackdrop, iPhoneOr, DeckLookBackdropBase, FrostSource, measureAnchor, Menu, menuExitMs, MenuFloorProvider, moveTo, pointPlacer, Portal, ScrollActions, Shade, space, tabsCurve, tabsLayout, tabsMotion, type Confirmation, type MenuItem, useDesign, useFocusReturn, useReduceMotion, usesGlass, useTheme } from "../ui";
+import { archiveCardLayout, chromeLayout, ConfirmSheet, deckChromeLayout, DeckLookBackdrop, iPhoneOr, DeckLookBackdropBase, FrostSource, GlassSource, measureAnchor, Menu, menuExitMs, MenuFloorProvider, moveTo, pointPlacer, Portal, ScrollActions, Shade, space, tabsCurve, tabsLayout, tabsMotion, type Confirmation, type MenuItem, useDesign, useFocusReturn, useReduceMotion, usesGlass, useTheme } from "../ui";
 import { openSettings } from "../../state/settings/hooks";
 import { confirmInSheet, nativeMenus } from "../ui/MenuTrigger";
 import { useSyncEnabled } from "../../state/sync/hooks";
@@ -80,14 +85,15 @@ import { tabMatchesQuery, type BrowserTab } from "../../state/tabs/tabModels";
 import { DeckBar } from "./DeckBar";
 import { cardMenuItems as deckCardMenu, cardOpen, coverFrame, DECK_PHASE, DeckCard, leavingZ, OPENING_CARD_MOTION, OPENING_CARD_RESPONSE, OpeningCard, type CardOpen, type DeckMotion, type Reads } from "./DeckCard";
 import { ContainedDeckCard, containedCards, containedDeckScroll } from "./ContainedDeck";
-import { MotionView, pageReportsDrawn, type MotionCurve } from "../ui";
+import { iconRoles, LookBackdrop, MotionView, pageReportsDrawn, type MotionCurve } from "../ui";
 import { hideArchiveCard, offerArchiveCard, offerArchiveCardNow, showArchiveCardNow, useArchiveCardShowing } from "../../state/browse/archiveCard";
-import { takeDeckCommand, useDeckCommand } from "../../state/browse/deckCommands";
+import { sendDeckCommand, takeDeckCommand, useDeckCommand } from "../../state/browse/deckCommands";
 import { ArchiveIntervalCard } from "./ArchiveIntervalCard";
 import { DeckBottomBar } from "./DeckBottomBar";
 import { useBottomBarLayout } from "../ui/useBottomBarLayout";
 import { DeckHeader, deckHeaderBottom } from "./DeckHeader";
 import { deckLook } from "./deckLook";
+import { tabSwitchCuts } from "../../state/browse/tabSwitch";
 import { linearGradientCss } from "../../lib/gradient";
 import { DeckEmpty, IncognitoChip } from "./DeckChrome";
 import { MaterialDeckCard } from "./MaterialDeckCard";
@@ -95,17 +101,27 @@ import { MaterialDeckBackdrop, MaterialDeckChrome, MaterialDeckEmpty } from "./M
 import { MATERIAL_DECK, materialBottomRowCenter, materialCloseAt, materialDeckGeometry } from "./MaterialDeckLayout";
 import { materialDuration, materialMove, materialSize } from "../ui/materialTokens";
 import { PageBarGhost } from "../browsing/PageBarGhost";
+import { materialMenuWidth } from "../ui/MaterialSurfaces";
 import { useMaterialBarHosted } from "../browsing/PersistentMaterialBar";
 import { screenCornerRadius } from "../../state/app/displayCorner";
 import { TabGrid, type GridFrame } from "./TabGrid";
 import { tabGridMotion } from "./tabGridLayout";
 import { useDeckGrid } from "../../state/browse/deckGrid";
-import { deckPullGrowing, endDeckPull, growDeckPull, peekDeckPullEntrance, publishDeckStandby, showGrowingPage, takeDeckPullEntrance } from "../../state/browse/deckPull";
+import { arriveFromDeck, dropPreparedDestination, liftDestination, prepareDestination, pressDestination, takeDestinationAction } from "../../state/browse/destination";
+import { pressDeckPlus } from "../../state/search/standbyReveal";
+import { deckPull, deckPullGrowing, endDeckPull, growDeckPull, pageBarPreviewShown, pageBarShown, peekDeckPullEntrance, previewPageBar, publishDeckStandby, releaseDeckOnHideOnUI, showGrowingPage, takeDeckPullEntrance } from "../../state/browse/deckPull";
+import { cardHitSeq, currentPhoneGeneration, DECK_HIT_LABELS, deckAwaitsEntrance, deckCardLift, deckChromeOwned, deckChromeTurn, deckCommandPending, deckLiftCurrent, settleDeckCommand, deckGeometryChanged, deckHitMark, deckLive, deckOwnsInput, deckRevisionOf, dropDeckHits, followDeckChromeOnUI, forgetPreparedDeck, markDeckEntranceCommitted, peekDeckHit, prepareDeck, takeDeckCardHit, takeDeckHit, useDeckHits, usePhoneTurn, type DeckCardLift, type DeckHitCommand } from "../../state/browse/deckTurn";
+import { UiFrameMark, uiFrameMarkStyle } from "../ui/UiFrameMark";
 import { DECK_PULL, pullTarget, stackPullTarget } from "../../lib/deckPull";
+import { glassFadeMs } from "../ui/motion";
 import { barSpanCenter } from "../../lib/bottomBarSpan";
 import { useBarGlyphFade, useDeckPulled } from "./deckPulled";
 
 type Phase = { kind: "opening" | "settled" | "closing"; id: string | null };
+
+type DeckPrivateBackdrop = "instant" | "fade" | null;
+
+export const deckGlassPrivately = (incognito: boolean, side: boolean, privateBackdrop: DeckPrivateBackdrop) => incognito || side || privateBackdrop !== null;
 
 const SETTLED: Phase = { kind: "settled", id: null };
 
@@ -188,7 +204,7 @@ export const TabDeck = memo(function TabDeck() {
       shownPhase: shown ? phase : SETTLED,
       expanded: shown ? index : -1,
       progress: shown && index < 0 ? 1 : 0,
-      cardsOpacity: shown && index >= 0 && !(Boolean(live[index]?.snapshotFileName) || deckEntranceCapture(target!) !== null) ? 1 : 0,
+      cardsOpacity: shown && index >= 0 ? 1 : 0,
     };
   });
   const [order, setOrder] = useState<string[]>(first.ids);
@@ -257,11 +273,21 @@ export const TabDeck = memo(function TabDeck() {
     expandedIndex.value = next.id ? at.indexOf(next.id) : -1;
     setPhase(next);
   };
+  const chromeSettled = useSharedValue(first.phase.kind === "settled");
+  const followChrome = (settled: boolean) => {
+    "worklet";
+    chromeSettled.value = settled;
+    followDeckChromeOnUI(settled);
+  };
   const settlePhase = () => {
     "worklet";
     deckPhase.value = DECK_PHASE.settled;
     expandedIndex.value = -1;
+    followChrome(true);
   };
+  const cutsAway = tabSwitchCuts();
+  const poseTurn = useSharedValue(0);
+  const chromeCutAway = useAnimatedStyle(() => ({ opacity: cutsAway && deckPhase.value === DECK_PHASE.closing ? 0 : 1 }));
   const scroll = useSharedValue(first.scroll);
   const scaleProgress = useSharedValue(first.progress);
   const positionProgress = useSharedValue(first.progress);
@@ -308,6 +334,49 @@ export const TabDeck = memo(function TabDeck() {
   const chromeOpacity = useDerivedValue(() => deckChromeOpacity(chromeProgress.value));
   const barGlyphFade = useBarGlyphFade(pulling, chromeOpacity);
   const chromeStyle = useAnimatedStyle(() => ({ opacity: chromeOpacity.value }));
+  const chromeGlassHeld = cutsAway && glassChrome;
+  const moreOpener = useRef<(() => void) | null>(null);
+  const spacesOpener = useRef<(() => void) | null>(null);
+  const searchOpener = useRef<(() => void) | null>(null);
+  const restsPosed = cutsAway && pulls;
+  const phoneTurn = usePhoneTurn((s) => s.generation);
+  const deckRevision = deckRevisionOf(incognito, shownSpace);
+  useLayoutEffect(() => {
+    if (shown) return;
+    if (!pulls || !heldSelected || !order.includes(heldSelected)) prepareDeck(null);
+    else prepareDeck({ tabId: heldSelected, order, revision: deckRevision });
+  }, [shown, pulls, heldSelected, order, deckRevision, phoneTurn]);
+  useEffect(() => () => forgetPreparedDeck(), []);
+  const geometryKnown = useRef(false);
+  useLayoutEffect(() => {
+    if (!geometryKnown.current) {
+      geometryKnown.current = true;
+      return;
+    }
+    deckGeometryChanged();
+  }, [g, deckHeight, width, insets.bottom]);
+  const deckShownNow = useSharedValue(shown);
+  useLayoutEffect(() => {
+    deckShownNow.value = shown;
+    if (chromeGlassHeld && shown) pageBarShown.value = 0;
+  }, [shown, deckShownNow]);
+  const heldHeaderStyle = useAnimatedStyle(() => ({ opacity: pulling.value || deckShownNow.value || deckLive.value !== 0 ? chromeOpacity.value : 0 }));
+  const heldBarStyle = useAnimatedStyle(() => ({ opacity: pulling.value || deckShownNow.value || deckLive.value !== 0 ? barGlyphFade.value * (deckPull.cut.value || deckShownNow.value ? 1 - pageBarShown.value : 1) : 0 }));
+  const deckOwnership = useAnimatedProps<{ pointerEvents: "auto" | "none"; importantForAccessibility: "auto" | "no-hide-descendants" }>(
+    () => ({
+      pointerEvents: deckLive.value !== 0 || shown ? "auto" : "none",
+      importantForAccessibility: deckLive.value !== 0 || shown ? "auto" : "no-hide-descendants",
+    }),
+  );
+  useLayoutEffect(() => {
+    runOnUI(followChrome)(phase.kind === "settled");
+  }, [phase.kind]);
+  const chromeOwnership = useAnimatedProps<{ pointerEvents: "box-none" | "none"; importantForAccessibility: "auto" | "no-hide-descendants" }>(() => {
+    const open = deckChromeOwned(deckLive.value, deckChromeTurn.value, chromeSettled.value);
+    return { pointerEvents: open ? "box-none" : "none", importantForAccessibility: open ? "auto" : "no-hide-descendants" };
+  });
+  const liveShown = useAnimatedStyle(() => ({ opacity: deckLive.value !== 0 ? 1 : 0 }));
+  const drawnShown = useAnimatedStyle(() => ({ opacity: deckLive.value !== 0 && handedOverAway.value === 0 && (!parked || waking.value) ? 1 : 0 }), [parked]);
   const chipStyle = useAnimatedStyle(() => ({ opacity: dragIndex.value >= 0 ? 0 : deckChromeOpacity(positionProgress.value) }));
 
   const searchedFor = useRef(needle);
@@ -356,16 +425,18 @@ export const TabDeck = memo(function TabDeck() {
     placeCards(order, standbyScroll);
     deckPhase.value = DECK_PHASE.settled;
     expandedIndex.value = -1;
-    scaleProgress.value = 0;
-    positionProgress.value = 0;
+    scaleProgress.value = restsPosed ? 1 : 0;
+    positionProgress.value = restsPosed ? 1 : 0;
     cardsOpacity.value = 0;
     touching.value = false;
+    runOnUI(releaseDeckOnHideOnUI)();
+    dropDeckHits();
     const standbyIndex = heldSelected ? order.indexOf(heldSelected) : -1;
     const tile = gridFocus.current;
     if (!pulls || !heldSelected || standbyIndex < 0) publishDeckStandby(null);
     else if (grid) publishDeckStandby(tile?.id === heldSelected ? pullTarget(heldSelected, g.width, g.height, tile.frame, tabsLayout.cardRadius, g.screenCorner) : null);
-    else publishDeckStandby(stackPullTarget(g, heldSelected, standbyIndex, standbyScroll, 0));
-  }, [shown, order, heldSelected, pulls, grid, g]);
+    else publishDeckStandby(stackPullTarget(g, heldSelected, standbyIndex, standbyScroll, 0), { ids: order, scroll: standbyScroll, g });
+  }, [shown, order, heldSelected, pulls, grid, g, restsPosed, phoneTurn]);
 
   const gridFocus = useRef<{ id: string; frame: GridFrame } | null>(null);
   const gridFocused = (id: string, frame: GridFrame) => {
@@ -377,6 +448,7 @@ export const TabDeck = memo(function TabDeck() {
   useEffect(
     () => () => {
       publishDeckStandby(null);
+      runOnUI(releaseDeckOnHideOnUI)();
       if (grown.current) endGrown();
     },
     [],
@@ -384,30 +456,50 @@ export const TabDeck = memo(function TabDeck() {
 
   useLayoutEffect(() => {
     if (!shown) return;
+    markShownFrame("deck");
     spaceShown.current = shownSpace;
     sideShown.current = side;
     sideScrolls.current = { normal: null, incognito: null };
     searchedFor.current = needle;
     publishDeckStandby(null);
-    if (takeDeckPullEntrance()) {
-      deckPhase.value = DECK_PHASE.settled;
-      expandedIndex.value = -1;
-      scaleProgress.value = 1;
-      positionProgress.value = 1;
-      cardsOpacity.value = 1;
-      endDeckPull();
-      return;
-    }
+    const pulledEntrance = takeDeckPullEntrance();
     const entrance = peekDeckEntrance();
     const index = entrance ? order.indexOf(entrance) : -1;
+    const cuts = tabSwitchCuts();
+    const entranceSettles = pulledEntrance !== null || !entrance || index < 0 || grid || cuts;
+    if (pulledEntrance && pulledEntrance.phone !== currentPhoneGeneration()) {
+      labTrace("PAGELAB deck entrance committed after the screen layout changed, its early taps are dropped");
+      endDeckPull();
+      markDeckEntranceCommitted(0, true);
+      return;
+    }
+    markDeckEntranceCommitted(pulledEntrance?.turn ?? 0, entranceSettles);
+    if (pulledEntrance) {
+      const early = peekDeckHit();
+      const posed = early?.control === "card" && early.posedTurn === poseTurn.value && deckPhase.value === DECK_PHASE.closing;
+      if (!posed) {
+        deckPhase.value = DECK_PHASE.settled;
+        expandedIndex.value = -1;
+        scaleProgress.value = 1;
+        positionProgress.value = 1;
+      }
+      cardsOpacity.value = 1;
+      const queued = deckPull.openAfter.value;
+      endDeckPull();
+      if (queued) sendDeckCommand({ kind: "open", tabId: queued, tappedAt: Date.now() });
+      return;
+    }
     placeCards(order, index >= 0 ? deckOpeningScroll(index, order.length, material) : initialDeckScroll(order.length));
-    if (!entrance || index < 0 || grid) {
+    if (entranceSettles) {
+      if (phase.kind !== "settled") setPhase(SETTLED);
       deckPhase.value = DECK_PHASE.settled;
       expandedIndex.value = -1;
       scaleProgress.value = 1;
       positionProgress.value = 1;
-      cardsOpacity.value = withTiming(1, { duration: tabsMotion.fade });
-      if (entrance && grid) deckEntered(entrance);
+      cardsOpacity.value = cuts ? 1 : withTiming(1, { duration: tabsMotion.fade });
+      if (entrance && (grid || cuts)) deckMotionDone(entrance);
+      markTiming("deck motion");
+      markTiming("deck taps");
       return;
     }
     beginInteraction("deck open", INTERACTION_WINDOW_MS.deckOpen);
@@ -415,57 +507,27 @@ export const TabDeck = memo(function TabDeck() {
     expandedIndex.value = index;
     scaleProgress.value = 0;
     positionProgress.value = 0;
-    const shrink = () => {
-      if (pulls) deckEntered(entrance);
-      cardsOpacity.value = 1;
-      scaleProgress.value = moveTo(1, tabsMotion.openScale);
-      positionProgress.value = moveTo(1, tabsMotion.openPosition, (finished) => {
-        "worklet";
-        if (!finished) return;
-        settlePhase();
-        runOnJS(setPhase)(SETTLED);
-        runOnJS(deckEntered)(entrance);
-      });
-    };
-    const capture = deckEntranceCapture(entrance);
-    if (!capture && !tabs.get(entrance)?.snapshotFileName) {
-      shrink();
-      return () => deckEntered(entrance);
-    }
-    cardsOpacity.value = 0;
-    let frame = 0;
-    let live = true;
-    let waited = false;
-    let stopWaiting = () => {};
-    const waitForPaint = () => {
-      if (!live || waited) return;
-      waited = true;
-      const now = currentTabs();
-      const picture = [...now.open, ...now.privates].find((tab) => tab.id === entrance)?.snapshotFileName;
-      if (!picture) {
-        frame = requestAnimationFrame(shrink);
-        return;
-      }
-      stopWaiting = whenPicturePainted(pictureKey(`deck:${entrance}`, picture), ENTRANCE_PAINT_CAP_MS, (painted) => {
-        if (!painted && !tabs.get(entrance)?.isPrivate) countUsage("deck_pictures_late");
-        frame = requestAnimationFrame(shrink);
-      });
-    };
-    if (capture) {
-      const cap = setTimeout(waitForPaint, ENTRANCE_CAPTURE_CAP_MS);
-      void capture.then(() => {
-        clearTimeout(cap);
-        waitForPaint();
-      });
-      stopWaiting = () => clearTimeout(cap);
-    } else waitForPaint();
-    return () => {
-      live = false;
-      stopWaiting();
-      cancelAnimationFrame(frame);
-      deckEntered(entrance);
-    };
+    markTiming("deck motion");
+    if (pulls) deckEntered(entrance);
+    cardsOpacity.value = 1;
+    scaleProgress.value = moveTo(1, tabsMotion.openScale);
+    positionProgress.value = moveTo(1, tabsMotion.openPosition, (finished) => {
+      "worklet";
+      if (!finished) return;
+      settlePhase();
+      runOnJS(setPhase)(SETTLED);
+      runOnJS(markTiming)("deck taps", Date.now());
+      runOnJS(deckMotionDone)(entrance);
+    });
+    return () => deckEntered(entrance);
   }, [shown]);
+
+  const earlyHit = useDeckHits((s) => s.hit);
+  useLayoutEffect(() => {
+    if (!earlyHit || !shown) return;
+    if (takeDeckHit(earlyHit)) runEarlyHit(earlyHit);
+    settleDeckCommand(earlyHit.turn);
+  }, [earlyHit, shown]);
 
   useEffect(() => {
     if (!shown) return;
@@ -554,6 +616,7 @@ export const TabDeck = memo(function TabDeck() {
       const kept = sideScrolls.current[side ? "incognito" : "normal"];
       showSide(ids, alive, kept === null ? initialDeckScroll(ids.length) : Math.min(Math.max(kept, 0), Math.max(ids.length - 1, 0)), sideLeaving.current);
       sideLeaving.current = false;
+      if (!side && offerArchiveAgain(sideTabs.length)) countUsage("archive_card_reoffers");
       return;
     }
     const next = mergeDeckOrder(order, ids);
@@ -578,8 +641,10 @@ export const TabDeck = memo(function TabDeck() {
 
   const showNewSpace = (ids: string[], alive: ReadonlySet<string>) => {
     showSide(ids, alive, initialDeckScroll(ids.length));
-    if (!archiveOffered && !redesigned) offerArchiveCard(ids.length);
+    offerArchiveAgain(sideTabs.length);
   };
+
+  const offerArchiveAgain = (openTabs: number) => !archiveOffered && !redesigned && offerArchiveCard(openTabs);
 
   const showSide = (ids: string[], alive: ReadonlySet<string>, to: number, faded = false) => {
     for (const id of hidden.current) if (!alive.has(id)) hidden.current.delete(id);
@@ -606,7 +671,10 @@ export const TabDeck = memo(function TabDeck() {
     setOrder(ids);
   };
 
-  const settledOpen = (id: string) => openTab(id);
+  const settledOpen = (id: string) => {
+    openTab(id);
+    markTiming("page live");
+  };
 
   const command = useDeckCommand((s) => s.command);
   useEffect(() => {
@@ -620,7 +688,10 @@ export const TabDeck = memo(function TabDeck() {
     }
     else if (command.kind === "closeFocused") close(focused, 0);
     else if (command.kind === "openFocused") open(focused);
-    else if (command.kind === "openSelected") {
+    else if (command.kind === "open") {
+      const at = order.indexOf(command.tabId);
+      if (at >= 0) open(at, command.tappedAt);
+    } else if (command.kind === "openSelected") {
       const selected = currentTabs().selectedId;
       const at = selected ? order.indexOf(selected) : -1;
       open(at >= 0 ? at : focused);
@@ -633,18 +704,58 @@ export const TabDeck = memo(function TabDeck() {
   }, [command, phase.kind, shown]);
 
   useEffect(() => () => void (openingId.current = null), []);
-  const open = (index: number) => {
+  const unpose = (turn: number) => {
+    clearCutCard();
+    previewPageBar(null);
+    dropPreparedDestination();
+    runOnUI((posed: number) => {
+      "worklet";
+      if (poseTurn.value !== posed || deckPhase.value !== DECK_PHASE.closing) return;
+      pageBarShown.value = 0;
+      pageBarPreviewShown.value = 0;
+      deckPhase.value = DECK_PHASE.settled;
+      expandedIndex.value = -1;
+      scaleProgress.value = 1;
+      positionProgress.value = 1;
+    })(turn);
+  };
+  const open = (index: number, tappedAt?: number, posedTurn?: number) => {
     beginInteraction("card open", INTERACTION_WINDOW_MS.cardOpen);
     const id = order[index];
-    if (!id || phase.kind !== "settled" || dragIndex.value === index) return;
+    if (!id || phase.kind !== "settled" || dragIndex.value === index || openingId.current !== null || useBrowse.getState().surface !== "deck") {
+      if (posedTurn !== undefined) unpose(posedTurn);
+      return;
+    }
+    markTiming("card tap", tappedAt);
+    runOnUI(markNextUiFrame)("card motion");
     if (searchChrome) Keyboard.dismiss();
-    if (grid || (reduceMotion && !pulls)) {
+    if (grid || tabSwitchCuts() || (reduceMotion && !pulls)) {
+      const cuts = tabSwitchCuts() && !grid;
+      const turn = posedTurn ?? poseTurn.value + 1;
+      if (cuts) {
+        if (posedTurn === undefined) {
+          poseTurn.value = turn;
+          deckPhase.value = DECK_PHASE.closing;
+          expandedIndex.value = index;
+          scaleProgress.value = 0;
+          positionProgress.value = 0;
+        }
+        noteCutCard(id, g.cardWidth);
+        if (redesigned && posedTurn === undefined) {
+          prepareDestination(id);
+          runOnUI(liftDestination)(id);
+        }
+      }
+      const held = cuts && redesigned ? takeDestinationAction(id) : null;
       settledOpen(id);
+      if (cuts && (currentTabs().selectedId !== id || useBrowse.getState().surface !== "browsing")) unpose(turn);
+      else if (cuts && redesigned) arriveFromDeck(id, held);
       return;
     }
     setMenu(null);
     const chosen = cardOpen();
     const path = pulls && chosen !== "coveringCard" ? "pulledCard" : chosen;
+    if (path === "pulledCard" && !growDeckPull(stackPullTarget(g, id, index, scroll.value, 0), barBackWithPage, handOver, reduceMotion)) return;
     openPath.current = path;
     if (path === "coveringCard") {
       coverPending.current = id;
@@ -655,14 +766,15 @@ export const TabDeck = memo(function TabDeck() {
     openingId.current = id;
     handedOver.current = null;
     prepared.current = null;
+    clearTimeout(landingCap.current);
     if (path === "pulledCard") {
       grown.current = { id, opened: false, steady: reduceMotion };
-      growDeckPull(stackPullTarget(g, id, index, scroll.value, 0), barBackWithPage, reduceMotion);
-      setTimeout(() => handOver(id), reduceMotion ? 0 : criticalSpringLandsMs(DECK_PULL.growResponse, CARD_LANDED) + GROWN_SLACK_MS);
+      handOverOnLoss(id);
       return;
     }
     if (path !== "deckCard") setOpeningCard({ id, x: deckLeading(g, index - scroll.value) + g.cardWidth / 2, y: g.cardCenterY, path });
     if (path === "coveringCard") return;
+    if (path === "deckCard") setTimeout(() => prepareHandOver(id), PAGE_MOUNT_AFTER_GROWTH_MS);
     requestAnimationFrame(() => {
       if (openingId.current !== id) return;
       landing.value = true;
@@ -671,6 +783,11 @@ export const TabDeck = memo(function TabDeck() {
         if (finished) runOnJS(handOver)(id);
       });
     });
+    handOverOnLoss(id);
+  };
+
+  const handOverOnLoss = (id: string) => {
+    landingCap.current = setTimeout(() => handOver(id), DECK_PULL.growLostMs);
   };
 
   const grown = useRef<{ id: string; opened: boolean; steady: boolean } | null>(null);
@@ -729,16 +846,13 @@ export const TabDeck = memo(function TabDeck() {
     const state = { id, ready: false, landed: false };
     prepared.current = state;
     beginOpeningTab(id, veiled, openPath.current === "coveringCard" ? coverFrame(g).width : g.cardWidth);
-    const picture = tabs.get(id)?.snapshotFileName ?? null;
-    let waiting = picture ? 2 : 1;
-    const ready = () => {
-      waiting -= 1;
-      if (waiting > 0 || prepared.current !== state) return;
+    const ready = (laidOut: boolean) => {
+      if (prepared.current !== state || state.ready) return;
       state.ready = true;
+      if (!laidOut && openPath.current !== "coveringCard" && !tabs.get(id)?.isPrivate) countUsage("card_opens_waited");
       if (state.landed) finishOpen(id);
     };
     whenPageLaidOut(id, HANDOVER_CAP_MS, ready);
-    if (picture) whenPicturePainted(pictureKey(`cover:${id}`, picture), HANDOVER_CAP_MS, ready);
   };
   const coverDeck = (id: string) => {
     if (openingId.current !== id) return;
@@ -774,7 +888,7 @@ export const TabDeck = memo(function TabDeck() {
     stopDrawnWait.current = whenPageCoverHidden(id, COVER_LOST_MS, (reason) => {
       if (reason !== "drawn" && !tabs.get(id)?.isPrivate) countUsage("card_opens_waited");
       finishOpen(id);
-    });
+    }, useBrowse.getState().openingCover);
   };
   const openingCardGrowing = (id: string) => {
     if (openPath.current === "coveringCard") {
@@ -789,12 +903,12 @@ export const TabDeck = memo(function TabDeck() {
   const handOver = (id: string) => {
     if (openingId.current !== id || handedOver.current === id) return;
     handedOver.current = id;
+    if (openPath.current !== "coveringCard") clearTimeout(landingCap.current);
     prepareHandOver(id);
     const state = prepared.current;
     if (!state || state.id !== id) return;
     state.landed = true;
     if (state.ready) finishOpen(id);
-    else if (openPath.current !== "pulledCard" && !tabs.get(id)?.isPrivate) countUsage("card_opens_waited");
   };
 
   const closeKeepingSide = (id: string) => {
@@ -871,78 +985,10 @@ export const TabDeck = memo(function TabDeck() {
   const vertical = useSharedValue(false);
   const touchDown = useSharedValue({ x: 0, y: 0, absoluteX: 0, absoluteY: 0 });
   const scrollFrom = useSharedValue(0);
-  const barBand = { bottom: g.barCenterY - tabsLayout.barTouchClearance - g.height };
+  const tapFrom = useSharedValue({ x: 0, y: 0 });
+  const barBandBottom = g.barCenterY - tabsLayout.barTouchClearance - g.height;
   const deckBarTop = g.barCenterY - deckChromeLayout.barCircle / 2;
-  const pan = Gesture.Pan()
-    .withTestId("deckPan")
-    .enabled(!(pulls && reduceMotion && phase.kind === "closing"))
-    .hitSlop(barBand)
-    .minDistance(10)
-    .onBegin((e) => {
-      touchDown.value = { x: e.x, y: e.y, absoluteX: e.absoluteX, absoluteY: e.absoluteY };
-    })
-
-    .onStart((e) => {
-      const down = touchDown.value;
-      const card = deckCardAt(g, count, scroll.value, down.x, down.y, anchor, DECK_MOUNT_REACH);
-      if (measuresInteractions) runOnJS(beginInteraction)("deck scroll", INTERACTION_WINDOW_MS.deckScroll);
-      startScroll.value = scroll.value;
-      scrollFrom.value = e.absoluteX;
-      touching.value = true;
-      runOnJS(touchChanged)(true);
-      runOnJS(hideArchiveCard)();
-      if (deckDragKind(card, e.absoluteX - down.absoluteX, e.absoluteY - down.absoluteY) === "lift") {
-        vertical.value = true;
-        dragIndex.value = card;
-        dragLift.value = deckLift(e.absoluteY - down.absoluteY);
-        return;
-      }
-      vertical.value = false;
-    })
-    .onUpdate((e) => {
-      const down = touchDown.value;
-      if (vertical.value) {
-        dragLift.value = deckLift(e.absoluteY - down.absoluteY);
-        return;
-      }
-      scroll.value = deckScrollDuringDrag(g, startScroll.value, e.absoluteX - scrollFrom.value, count);
-    })
-    .onEnd((e) => {
-      if (vertical.value) {
-        touching.value = false;
-        const card = dragIndex.value;
-        if (deckShouldClose(e.absoluteY - touchDown.value.absoluteY, e.velocityY, g.cardHeight)) {
-          runOnJS(flickTick)();
-          const ids = orderIds.value;
-          const id = ids[card];
-          if (id !== undefined && !(id in leaving.value)) {
-            const spec = flySpec(card, ids.length, dragLift.value, e.velocityY);
-            const next = ids.filter((other) => other !== id);
-            const before = scroll.value;
-            const after = deckScrollAfterChange(ids, next, before, false);
-            shiftDeck(next, after, after - before, -1, false, reduceMotion, { id, spec });
-            runOnJS(flownOff)(id, card, spec, next, after);
-          }
-          runOnJS(touchChanged)(false);
-        } else {
-          dragLift.value = withSpring(0, tabsMotion.release, (finished) => {
-            if (finished) dragIndex.value = -1;
-            runOnJS(touchChanged)(false);
-          });
-        }
-        return;
-      }
-      const target = deckSettleTarget(g, scroll.value, e.velocityX, count);
-      const settled = () => {
-        "worklet";
-        touching.value = false;
-        runOnJS(setAnchor)(target);
-        runOnJS(touchChanged)(false);
-      };
-      scroll.value = reduceMotion
-        ? withTiming(target, { duration: tabsMotion.fade, easing: tabsCurve.easeOut }, settled)
-        : withSpring(target, { ...tabsMotion.settle, velocity: deckSettleVelocity(g, scroll.value, target, e.velocityX) }, settled);
-    });
+  const bottomRowTop = g.height - materialBottomRowCenter(insets.bottom) - materialSize.fab / 2 - MATERIAL_DECK.keyboardGap;
   const showCardMenu = (index: number, x: number, y: number, control?: Rect, opener?: RefObject<ViewInstance | null>) => {
     if (phase.kind !== "settled" || !order[index]) return;
     cancelCardFocus.current();
@@ -965,17 +1011,6 @@ export const TabDeck = memo(function TabDeck() {
       () => latestActions.current.order.includes(id),
     );
   };
-  const longPress = Gesture.LongPress()
-    .withTestId("deckLongPress")
-    .enabled(!nativeMenus())
-    .hitSlop(barBand)
-    .minDuration(tabsMotion.longPress)
-    .onStart((e) => {
-      const card = deckCardAt(g, count, scroll.value, e.x, e.y, anchor, DECK_MOUNT_REACH);
-      if (card >= 0) runOnJS(showHeldCardMenu)(card, e.absoluteX, e.absoluteY);
-    });
-  const tapFrom = useSharedValue({ x: 0, y: 0 });
-  const bottomRowTop = g.height - materialBottomRowCenter(insets.bottom) - materialSize.fab / 2 - MATERIAL_DECK.keyboardGap;
   const closeFromX = (index: number) => {
     const id = order[index];
     if (!id || phase.kind !== "settled" || leavingIds.current.has(id)) return;
@@ -983,29 +1018,191 @@ export const TabDeck = memo(function TabDeck() {
     if (!tabs.get(id)?.isPrivate) countUsage("card_close_tapped");
     close(index, 0);
   };
-  const tap = Gesture.Manual()
-    .withTestId("deckTap")
-    .hitSlop(barBand)
-    .onTouchesDown((e) => {
-      const touch = e.allTouches[0];
-      if (touch) tapFrom.value = { x: touch.x, y: touch.y };
-    })
-    .onTouchesUp((e, manager) => {
-      const touch = e.changedTouches[0];
-      if (touch && deckIsTap(touch.x - tapFrom.value.x, touch.y - tapFrom.value.y)) {
-        const closing = material ? materialCloseAt(g, count, scroll.value, touch.x, touch.y) : -1;
-        const card = deckCardAt(g, count, scroll.value, touch.x, touch.y, anchor, DECK_MOUNT_REACH);
-        if (closing >= 0) runOnJS(closeFromX)(closing);
-        else if (card >= 0) runOnJS(open)(card);
-        else if (redesigned || (material && touch.y < bottomRowTop)) runOnJS(dismissKeyboard)();
-      }
-      manager.fail();
-    });
+  const settleAnchor = (target: number) => {
+    if (deckWindow(target, count) !== deckWindow(anchor, count)) setAnchor(target);
+  };
+  const runEarlyHit = (hit: DeckHitCommand) => {
+    labTrace(`PAGELAB ${hit.label} runs with the deck's entrance`);
+    if (hit.control === "card") {
+      const at = hit.tabId ? order.indexOf(hit.tabId) : -1;
+      if (at >= 0) open(at, undefined, hit.posedTurn);
+      else if (hit.posedTurn !== undefined) unpose(hit.posedTurn);
+    } else if (hit.control === "more") moreOpener.current?.();
+    else if (hit.control === "spaces") spacesOpener.current?.();
+    else if (hit.control === "search") searchOpener.current?.();
+    else if (hit.control === "plus") pressDeckPlus(hit.turn, openNewTab);
+    else if (hit.control === "privacy") switchDeckIncognito();
+  };
+  const openOnTurn = (at: number, tappedAt?: number, posedTurn?: number, lift?: DeckCardLift) => {
+    const id = order[at];
+    if (!shown && posedTurn === undefined) return;
+    if (lift && !deckLiftCurrent(lift)) {
+      labTrace("PAGELAB deck-hit:card dropped, it was lifted in a deck turn or screen layout that has ended");
+      if (posedTurn !== undefined) unpose(posedTurn);
+      return;
+    }
+    if (shown || posedTurn === undefined || !id) {
+      open(at, tappedAt, posedTurn);
+      return;
+    }
+    if (!lift || lift.turn === 0 || !lift.deck) {
+      unpose(posedTurn);
+      return;
+    }
+    deckHitAccepted({ seq: cardHitSeq(), turn: lift.turn, phone: lift.phone, control: "card", label: "deck-hit:card", deck: lift.deck, tabId: id, posedTurn });
+  };
+  const gestureActions = useRef({ order, open: openOnTurn, unpose, flownOff, closeFromX, showHeldCardMenu, settleAnchor });
+  useLayoutEffect(() => {
+    gestureActions.current = { order, open: openOnTurn, unpose, flownOff, closeFromX, showHeldCardMenu, settleAnchor };
+  });
+  const panEnabled = !(pulls && reduceMotion && phase.kind === "closing");
+  const longPressEnabled = !nativeMenus();
+  const deckGesture = useMemo(() => {
+    const barBand = { bottom: barBandBottom };
+    const withCard = (id: string, act: (at: number) => void) => {
+      const at = gestureActions.current.order.indexOf(id);
+      if (at >= 0) act(at);
+    };
+    const openCard = (id: string) => withCard(id, (at) => gestureActions.current.open(at));
+    const openPosedCard = (id: string, turn: number, lift: DeckCardLift) => {
+      traceSlice("deck select");
+      const at = gestureActions.current.order.indexOf(id);
+      if (at < 0) gestureActions.current.unpose(turn);
+      else gestureActions.current.open(at, undefined, turn, lift);
+    };
+    const flyOff = (id: string, at: number, spec: DeckLeave, next: readonly string[], after: number) => gestureActions.current.flownOff(id, at, spec, next, after);
+    const closeCardFromX = (id: string) => withCard(id, (at) => gestureActions.current.closeFromX(at));
+    const holdCardMenu = (id: string, x: number, y: number) => withCard(id, (at) => gestureActions.current.showHeldCardMenu(at, x, y));
+    const anchorAt = (target: number) => gestureActions.current.settleAnchor(target);
+    const pan = Gesture.Pan()
+      .withTestId("deckPan")
+      .enabled(panEnabled)
+      .hitSlop(barBand)
+      .minDistance(10)
+      .onTouchesDown((_event, manager) => {
+        if (!deckOwnsInput()) manager.fail();
+      })
+      .onBegin((e) => {
+        touchDown.value = { x: e.x, y: e.y, absoluteX: e.absoluteX, absoluteY: e.absoluteY };
+      })
+      .onStart((e) => {
+        const down = touchDown.value;
+        const card = deckCardAt(g, count, scroll.value, down.x, down.y, anchor, DECK_MOUNT_REACH);
+        if (measuresInteractions) runOnJS(beginInteraction)("deck scroll", INTERACTION_WINDOW_MS.deckScroll);
+        startScroll.value = scroll.value;
+        scrollFrom.value = e.absoluteX;
+        touching.value = true;
+        runOnJS(touchChanged)(true);
+        runOnJS(hideArchiveCard)();
+        if (deckDragKind(card, e.absoluteX - down.absoluteX, e.absoluteY - down.absoluteY) === "lift") {
+          vertical.value = true;
+          dragIndex.value = card;
+          dragLift.value = deckLift(e.absoluteY - down.absoluteY);
+          return;
+        }
+        vertical.value = false;
+      })
+      .onUpdate((e) => {
+        const down = touchDown.value;
+        if (vertical.value) {
+          dragLift.value = deckLift(e.absoluteY - down.absoluteY);
+          return;
+        }
+        scroll.value = deckScrollDuringDrag(g, startScroll.value, e.absoluteX - scrollFrom.value, count);
+      })
+      .onEnd((e) => {
+        if (vertical.value) {
+          touching.value = false;
+          const card = dragIndex.value;
+          if (deckShouldClose(e.absoluteY - touchDown.value.absoluteY, e.velocityY, g.cardHeight)) {
+            runOnJS(flickTick)();
+            const ids = orderIds.value;
+            const id = ids[card];
+            if (id !== undefined && !(id in leaving.value)) {
+              const spec = flySpec(card, ids.length, dragLift.value, e.velocityY);
+              const next = ids.filter((other) => other !== id);
+              const before = scroll.value;
+              const after = deckScrollAfterChange(ids, next, before, false);
+              shiftDeck(next, after, after - before, -1, false, reduceMotion, { id, spec });
+              runOnJS(flyOff)(id, card, spec, next, after);
+            }
+            runOnJS(touchChanged)(false);
+          } else {
+            dragLift.value = withSpring(0, tabsMotion.release, (finished) => {
+              if (finished) dragIndex.value = -1;
+              runOnJS(touchChanged)(false);
+            });
+          }
+          return;
+        }
+        const target = deckSettleTarget(g, scroll.value, e.velocityX, count);
+        const settled = () => {
+          "worklet";
+          touching.value = false;
+          runOnJS(anchorAt)(target);
+          runOnJS(touchChanged)(false);
+        };
+        scroll.value = reduceMotion
+          ? withTiming(target, { duration: tabsMotion.fade, easing: tabsCurve.easeOut }, settled)
+          : withSpring(target, { ...tabsMotion.settle, velocity: deckSettleVelocity(g, scroll.value, target, e.velocityX) }, settled);
+      });
+    const longPress = Gesture.LongPress()
+      .withTestId("deckLongPress")
+      .enabled(longPressEnabled)
+      .hitSlop(barBand)
+      .minDuration(tabsMotion.longPress)
+      .onTouchesDown((_event, manager) => {
+        if (!deckOwnsInput()) manager.fail();
+      })
+      .onStart((e) => {
+        const card = deckCardAt(g, count, scroll.value, e.x, e.y, anchor, DECK_MOUNT_REACH);
+        const id = card >= 0 ? orderIds.value[card] : undefined;
+        if (id !== undefined) runOnJS(holdCardMenu)(id, e.absoluteX, e.absoluteY);
+      });
+    const tap = Gesture.Manual()
+      .withTestId("deckTap")
+      .hitSlop(barBand)
+      .onTouchesDown((e) => {
+        const touch = e.allTouches[0];
+        if (!touch) return;
+        tapFrom.value = { x: touch.x, y: touch.y };
+        if (!cutsAway || grid || deckCommandPending()) return;
+        const pressed = deckCardAt(g, count, scroll.value, touch.x, touch.y, anchor, DECK_MOUNT_REACH);
+        const pressedId = pressed >= 0 ? orderIds.value[pressed] : undefined;
+        if (pressedId !== undefined) runOnJS(pressDestination)(pressedId);
+      })
+      .onTouchesUp((e, manager) => {
+        const touch = e.changedTouches[0];
+        if (touch && deckIsTap(touch.x - tapFrom.value.x, touch.y - tapFrom.value.y)) {
+          const closing = material ? materialCloseAt(g, count, scroll.value, touch.x, touch.y) : -1;
+          const card = deckCardAt(g, count, scroll.value, touch.x, touch.y, anchor, DECK_MOUNT_REACH);
+          const closingId = closing >= 0 ? orderIds.value[closing] : undefined;
+          const cardId = card >= 0 ? orderIds.value[card] : undefined;
+          if (closing >= 0) {
+            if (closingId !== undefined) runOnJS(closeCardFromX)(closingId);
+          } else if (card >= 0) {
+            if (cardId !== undefined && cutsAway && !grid && deckPhase.value === DECK_PHASE.settled && dragIndex.value !== card && takeDeckCardHit()) {
+              const lift = deckCardLift();
+              const turn = poseTurn.value + 1;
+              poseTurn.value = turn;
+              deckPhase.value = DECK_PHASE.closing;
+              expandedIndex.value = card;
+              scaleProgress.value = 0;
+              positionProgress.value = 0;
+              liftDestination(cardId);
+              runOnJS(openPosedCard)(cardId, turn, lift);
+            } else if (cardId !== undefined && !deckAwaitsEntrance() && !deckCommandPending()) runOnJS(openCard)(cardId);
+          } else if (redesigned || (material && touch.y < bottomRowTop)) runOnJS(dismissKeyboard)();
+        }
+        manager.fail();
+      });
+    return Gesture.Race(pan, longPress, tap);
+  }, [g, count, anchor, reduceMotion, material, redesigned, grid, bottomRowTop, barBandBottom, panEnabled, longPressEnabled, measuresInteractions]);
 
   const cardMenuItems = (index: number): MenuItem[] => {
     const tab = tabs.get(order[index] ?? "");
     const closeCard = () => close(index, 0);
-    if (!tab) return [{ label: "Close Tab", destructive: true, onPress: closeCard }];
+    if (!tab) return [{ label: "Close Tab", icon: "xmark", destructive: true, onPress: closeCard }];
     return deckCardMenu(tab, { devices: sendTargetsFor(tab), pinned: isTabPinned(tab), syncEnabled, spaces: redesigned ? spaceMoveTargets(tab) : [], icons: true }, closeCard);
   };
 
@@ -1023,9 +1220,9 @@ export const TabDeck = memo(function TabDeck() {
     });
   const confirmLeaveIncognito = () =>
     ask({
-      title: "Close Incognito Tabs?",
+      title: `${incognitoWords.closeIncognitoTabs}?`,
       message: "Their pages, cookies and history are cleared.",
-      action: "Close Incognito Tabs",
+      action: incognitoWords.closeIncognitoTabs,
       run: () => {
         haptics.press();
         leaveIncognito();
@@ -1043,6 +1240,7 @@ export const TabDeck = memo(function TabDeck() {
   const cardActions = useMemo(
     () => ({
       open: (at: number) => latestActions.current.open(at),
+      indexOf: (id: string) => latestActions.current.order.indexOf(id),
       close: (at: number) => latestActions.current.close(at, 0),
       closeNow: (at: number) => latestActions.current.closeNow(at),
       menu: (at: number, card: RefObject<ViewInstance | null>) => {
@@ -1067,22 +1265,27 @@ export const TabDeck = memo(function TabDeck() {
     [],
   );
   const crossfade = reduceMotion ? tabGridMotion.crossfadeReduced : tabGridMotion.crossfade;
+  const privateLook = redesigned && incognito;
+  const [privateBackdrop, setPrivateBackdrop] = useState<DeckPrivateBackdrop>(privateLook ? "instant" : null);
+  if (privateLook && privateBackdrop === null) setPrivateBackdrop(shown ? "fade" : "instant");
+  if (!privateLook && privateBackdrop !== null && !shown) setPrivateBackdrop(null);
+  const glassPrivately = deckGlassPrivately(incognito, side, privateBackdrop);
   const gridTabs = gridAvailable && (grid || gridLayer) ? order.flatMap((id) => {
     const tab = tabs.get(id);
     return tab && !hidden.current.has(id) ? [tab] : [];
   }) : [];
   const plusItems: MenuItem[] = incognito
     ? [
-        { label: "New Tab", icon: "plus", onPress: newRegularTab },
-        { label: "New Incognito Tab", icon: "eyes", onPress: newTab },
+        { label: actionWords.newTab, icon: iconRoles.newTab, onPress: newRegularTab },
+        { label: actionWords.newIncognitoTab, icon: "eyes", onPress: newTab },
       ]
     : [
-        { label: "New Incognito Tab", icon: "eyes", onPress: newIncognitoTab },
+        { label: actionWords.newIncognitoTab, icon: "eyes", onPress: newIncognitoTab },
         ...(canReopen ? [{ label: "Reopen Closed Tab", icon: "arrowUturnBackward" as const, onPress: reopenLastClosed }] : []),
       ];
   if (count)
     plusItems.push("divider", {
-      label: incognito ? "Close Incognito Tabs" : "Close All Tabs",
+      label: incognito ? incognitoWords.closeIncognitoTabs : "Close All Tabs",
       icon: "xmark",
       destructive: true,
       onPress: incognito ? confirmLeaveIncognito : confirmCloseAll,
@@ -1090,17 +1293,23 @@ export const TabDeck = memo(function TabDeck() {
 
   return (
     <MenuFloorProvider value={deckBarTop}>
+    <IncognitoLook value={privateLook}>
+    <GlassPrivacy value={glassPrivately}>
     <Animated.View
       testID="tabDeck"
       style={[StyleSheet.absoluteFill, shown ? null : pulls ? styles.parked : styles.hidden, handOverStyle]}
       pointerEvents={shown ? "auto" : "none"} collapsable={false}
       importantForAccessibility={shown ? "auto" : "no-hide-descendants"}
+      animatedProps={deckOwnership}
       accessibilityElementsHidden={!shown}
       onLayout={(event) => {
         const laidOut = event.nativeEvent.layout.height;
         if (laidOut > 0) setDeckHeight(laidOut);
       }}
     >
+      {cutsAway ? <UiFrameMark testID="deckLiveMark" markWhenShown="deck-live" style={[uiFrameMarkStyle, liveShown]} /> : null}
+      {cutsAway ? <UiFrameMark testID="deckDrawnMark" markWhenShown="deck-drawn" style={[uiFrameMarkStyle, drawnShown]} /> : null}
+      {cutsAway ? DECK_HIT_LABELS.map((control) => <DeckHitMark key={control} control={control} />) : null}
       <Animated.View style={[StyleSheet.absoluteFill, backdropStyle]} pointerEvents="none">
         {material ? (
           <MaterialDeckBackdrop incognito={incognito} />
@@ -1110,10 +1319,26 @@ export const TabDeck = memo(function TabDeck() {
             <FrostSource name={DECK_FROST} style={StyleSheet.absoluteFill} pointerEvents="none">
               <DeckLookBackdrop baseOutside />
               {redesigned && darkLook ? <View testID="deckDarkDepth" pointerEvents="none" style={[StyleSheet.absoluteFill, { experimental_backgroundImage: linearGradientCss(deckLook.darkDepth, false, 0, 0) }]} /> : null}
+              {privateBackdrop ? (
+                <MotionView
+                  testID="deckIncognitoBackdrop"
+                  style={StyleSheet.absoluteFill}
+                  pointerEvents="none"
+                  from={privateBackdrop === "fade" ? HIDDEN : undefined}
+                  to={privateLook ? SHOWN : HIDDEN}
+                  motion={crossfade}
+                  onMotionEnd={(finished) => {
+                    if (finished && !privateLook) setPrivateBackdrop(null);
+                  }}
+                >
+                  <LookBackdrop incognito />
+                </MotionView>
+              ) : null}
             </FrostSource>
           </>
         )}
       </Animated.View>
+      <GlassSource name={DECK_FROST}>
       <Shade shaded={menu !== null || (chromeMenu && !nativeMenus()) || cardMenu !== null || confirmation !== null}>
         <StackLayer available={gridAvailable} grid={grid} motion={crossfade} onFaded={() => setStackLayer(!grid)}>
         <ScrollActions
@@ -1123,13 +1348,13 @@ export const TabDeck = memo(function TabDeck() {
           canScrollBackward={deckScrollActionTarget(anchor, count, "backward") !== null}
           onScrollAction={(direction) => {
             if (pulls && reduceMotion && phase.kind === "closing") return;
-            const target = deckScrollActionTarget(anchor, count, direction);
+            const target = deckScrollActionTarget(focusedIndex(scroll.value, count), count, direction);
             if (target === null) return;
-            setAnchor(target);
+            settleAnchor(target);
             scroll.value = reduceMotion ? withTiming(target, { duration: tabsMotion.fade }) : withSpring(target, tabsMotion.settle);
           }}
         >
-          <GestureDetector gesture={shown ? Gesture.Race(pan, longPress, tap) : Gesture.Race(Gesture.Manual().enabled(false).onTouchesDown(ignoreTouch))}>
+          <GestureDetector gesture={deckGesture}>
             <Animated.View testID="deckCards" style={[styles.touch, { height: g.height }, cardsStyle]} collapsable={false}>
               {containedCards(contained, { ids: shownIds, geometry: g, motion }, shownIds.map((id) => {
                 const flying = leavingCards.find((card) => card.id === id);
@@ -1146,6 +1371,7 @@ export const TabDeck = memo(function TabDeck() {
                     onOpen={cardActions.open}
                     onClose={cardActions.close}
                     onCloseNow={cardActions.closeNow}
+                    indexOf={cardActions.indexOf}
                     onMenu={nativeMenus() ? undefined : cardActions.menu}
                   />
                 );
@@ -1177,7 +1403,7 @@ export const TabDeck = memo(function TabDeck() {
           </MotionView>
         ) : null}
         {!count && !leavingCards.length && phase.kind === "settled" ? (
-          material ? <MaterialDeckEmpty centerY={g.cardCenterY} showsArchive={hasArchive} onArchive={openArchive} searching={needle !== ""} incognito={incognito} /> : <DeckEmpty centerY={g.cardCenterY} showsArchive={hasArchive && !redesigned} onArchive={openArchive} searching={needle !== ""} incognito={side} />
+          material ? <MaterialDeckEmpty centerY={g.cardCenterY} showsArchive={hasArchive} onArchive={openArchive} searching={needle !== ""} incognito={incognito} /> : <DeckEmpty centerY={g.cardCenterY} showsArchive={hasArchive && !redesigned} onArchive={openArchive} query={needle} incognito={side} />
         ) : null}
         {archiveCard && phase.kind === "settled" && !grid ? <ArchiveIntervalCard edgeY={archiveCardEdgeY(material ? { ...g, barCenterY: g.height - materialBottomRowCenter(insets.bottom) } : g, archiveCardLayout.aboveBarCenter)} /> : null}
         {openingCard && tabs.get(openingCard.id) ? <OpeningCard key={openingCard.id} tab={tabs.get(openingCard.id)!} geometry={g} centerX={openingCard.x} centerY={openingCard.y} growsAtMount={openingCard.path === "coveringCard"} endsSquare={openingCard.path === "coveringCard"} onGrowing={() => openingCardGrowing(openingCard.id)} onLanded={openingCard.path === "coveringCard" ? () => landCoveringCard(openingCard.id) : undefined} /> : null}
@@ -1204,38 +1430,48 @@ export const TabDeck = memo(function TabDeck() {
               />
           </View>
         ) : redesigned ? (
-          <Animated.View testID="deckRedesignedChrome" style={glassChrome ? StyleSheet.absoluteFill : [StyleSheet.absoluteFill, chromeStyle]} pointerEvents={phase.kind === "settled" ? "box-none" : "none"} collapsable={false} importantForAccessibility={phase.kind === "settled" ? "auto" : "no-hide-descendants"} accessibilityElementsHidden={phase.kind !== "settled"}>
+          <Animated.View testID="deckRedesignedChrome" style={glassChrome ? [StyleSheet.absoluteFill, cutsAway ? chromeCutAway : null] : [StyleSheet.absoluteFill, chromeStyle, cutsAway ? chromeCutAway : null]} pointerEvents={phase.kind === "settled" ? "box-none" : "none"} collapsable={false} importantForAccessibility={phase.kind === "settled" ? "auto" : "no-hide-descendants"} animatedProps={chromeOwnership} accessibilityElementsHidden={phase.kind !== "settled"}>
             <ChromeGlassShown progress={chromeProgress} initiallyIn={first.progress >= DECK_CHROME_FROM} hidden={!shown} away={phase.kind === "closing" || openingCard !== null}>
               {(glassShown, barShown, barHanded) => (
                 <>
-                  <DeckHeader
-                    safeTop={g.safeTop}
-                    safeSide={g.safeSide}
-                    sideInset={chromeLayout.barSideInset}
-                    hasTabs={allTabs.length > 0}
-                    menusShown={shown && phase.kind === "settled"}
-                    onMenu={setChromeMenu}
-                    onCloseAll={confirmCloseAll}
-                    glassShown={glassShown}
-                    glassShownMs={pulledIn.current ? 0 : CHROME_GLASS_MS}
-                    glyphFade={glassChrome ? chromeOpacity : undefined}
-                  />
-                  <DeckBottomBar
-                    shown={shown}
-                    barCenterY={g.barCenterY}
-                    deckHeight={deckHeight}
-                    width={width}
-                    layout={deckBarLayout}
-                    incognito={incognito}
-                    privateCount={privateCount}
-                    onCloseIncognito={confirmLeaveIncognito}
-                    onQuery={setNeedle}
-                    menusShown={shown && phase.kind === "settled"}
-                    onMenu={setChromeMenu}
-                    glassShown={barShown}
-                    glassShownMs={barHanded || pulledIn.current ? 0 : CHROME_GLASS_MS}
-                    glyphFade={glassChrome ? barGlyphFade : undefined}
-                  />
+                  <HeldChrome held={chromeGlassHeld} style={heldHeaderStyle}>
+                    <DeckHeader
+                      moreOpener={moreOpener}
+                      spacesOpener={spacesOpener}
+                      underlay={chromeGlassHeld}
+                      hits={pulls}
+                      safeTop={g.safeTop}
+                      safeSide={g.safeSide}
+                      sideInset={chromeLayout.barSideInset}
+                      hasTabs={allTabs.length > 0}
+                      menusShown={shown && phase.kind === "settled"}
+                      onMenu={setChromeMenu}
+                      onCloseAll={confirmCloseAll}
+                      glassShown={chromeGlassHeld ? shown : glassShown}
+                      glassShownMs={pulledIn.current || tabSwitchCuts() ? 0 : CHROME_GLASS_MS}
+                      glyphFade={glassChrome && !chromeGlassHeld ? chromeOpacity : undefined}
+                    />
+                  </HeldChrome>
+                  <HeldChrome held={chromeGlassHeld} style={heldBarStyle}>
+                    <DeckBottomBar
+                      searchOpener={searchOpener}
+                      hits={pulls}
+                      shown={shown}
+                      barCenterY={g.barCenterY}
+                      deckHeight={deckHeight}
+                      width={width}
+                      layout={deckBarLayout}
+                      incognito={incognito}
+                      privateCount={privateCount}
+                      onCloseIncognito={confirmLeaveIncognito}
+                      onQuery={setNeedle}
+                      menusShown={shown && phase.kind === "settled"}
+                      onMenu={setChromeMenu}
+                      glassShown={chromeGlassHeld || barShown}
+                      glassShownMs={barHanded || pulledIn.current || tabSwitchCuts() ? 0 : CHROME_GLASS_MS}
+                      glyphFade={glassChrome && !chromeGlassHeld ? barGlyphFade : undefined}
+                    />
+                  </HeldChrome>
                 </>
               )}
             </ChromeGlassShown>
@@ -1252,9 +1488,9 @@ export const TabDeck = memo(function TabDeck() {
           >
             <DeckBar
               leading={
-                syncEnabled ? { icon: "laptop", label: "Synced Tabs", onPress: openSpaces } : { icon: "archivebox", label: "Archive", onPress: openArchive }
+                syncEnabled ? { icon: "laptop", label: destinationWords.spaces, onPress: openSpaces } : { icon: "archivebox", label: destinationWords.archive, onPress: openArchive }
               }
-              plusLabel={incognito ? "New Incognito Tab" : "New Tab"}
+              plusLabel={incognito ? actionWords.newIncognitoTab : actionWords.newTab}
               frost={{ source: DECK_FROST, variant: "bar" }}
               covered={trayOpen}
               onPlus={newTab}
@@ -1265,6 +1501,7 @@ export const TabDeck = memo(function TabDeck() {
         )}
         </MotionView>
       </Shade>
+      </GlassSource>
       <DeckLookProbe
         busy={phase.kind !== "settled" || menu !== null || chromeMenu || cardMenu !== null || confirmation !== null || deckSheet !== null || trayOpen || deckSurface !== "deck" || archiveCard}
         touch={probeTouch}
@@ -1278,7 +1515,7 @@ export const TabDeck = memo(function TabDeck() {
       ) : null}
       {menu === "chip" ? (
         <Menu
-          items={[{ label: "Close Incognito Tabs", icon: "xmark", destructive: true, onPress: confirmLeaveIncognito }]}
+          items={[{ label: incognitoWords.closeIncognitoTabs, icon: "xmark", destructive: true, onPress: confirmLeaveIncognito }]}
           place={{ top: g.safeTop + tabsLayout.chipHeight + tabsLayout.headerGap * 2, left: (width - tabsLayout.menuWidth) / 2, width: tabsLayout.menuWidth }}
           onDismiss={() => setMenu(null)}
         />
@@ -1286,9 +1523,17 @@ export const TabDeck = memo(function TabDeck() {
       {cardMenu && order.includes(cardMenu.id) ? <CardMenuAt items={cardMenuItems(order.indexOf(cardMenu.id))} privately={tabs.get(cardMenu.id)?.isPrivate === true} at={cardMenu} control={cardMenu.control} floor={deckBarTop} screen={{ width, height }} onDismiss={dismissCardMenu} /> : null}
       {confirmation ? <ConfirmSheet confirmation={confirmation} onClose={() => setConfirmation(null)} /> : null}
     </Animated.View>
+    </GlassPrivacy>
+    </IncognitoLook>
     </MenuFloorProvider>
   );
 });
+
+function DeckHitMark({ control }: { control: (typeof DECK_HIT_LABELS)[number] }) {
+  const label = `deck-hit:${control}`;
+  const shown = useAnimatedStyle(() => ({ opacity: deckHitMark.value === label ? 1 : 0 }));
+  return <UiFrameMark testID={`deckHitMark-${control}`} markWhenShown={label} style={[uiFrameMarkStyle, shown]} />;
+}
 
 function StackLayer({ available, grid, motion, onFaded, children }: { available: boolean; grid: boolean; motion: MotionCurve; onFaded: () => void; children: ReactNode }) {
   if (!available) return children;
@@ -1311,6 +1556,15 @@ function StackLayer({ available, grid, motion, onFaded, children }: { available:
   );
 }
 
+function HeldChrome({ held, style, children }: { held: boolean; style: ComponentProps<typeof Animated.View>["style"]; children: ReactNode }) {
+  if (!held) return <>{children}</>;
+  return (
+    <Animated.View style={[StyleSheet.absoluteFill, style]} pointerEvents="box-none" collapsable={false}>
+      {children}
+    </Animated.View>
+  );
+}
+
 function ChromeGlassShown({ progress, initiallyIn, hidden, away, children }: { progress: Reads<number>; initiallyIn: boolean; hidden: boolean; away: boolean; children: (glassShown: boolean, barShown: boolean, barHanded: boolean) => ReactNode }) {
   const [entered, setEntered] = useState(initiallyIn);
   const barHanded = useDeckOwnsBar();
@@ -1324,9 +1578,6 @@ function ChromeGlassShown({ progress, initiallyIn, hidden, away, children }: { p
   return children(glassShown, glassShown || barHanded, barHanded);
 }
 
-const ignoreTouch = () => {
-  "worklet";
-};
 
 const focusTick = () => haptics.tick();
 const dismissKeyboard = () => Keyboard.dismiss();
@@ -1342,9 +1593,8 @@ const HANDED_OVER_AWAY = 100_000;
 const CARD_LANDED = 0.02;
 const DECK_SCREEN_CORNER = iPhoneOr(() => DECK.displayCornerRadius, () => screenCornerRadius(DECK.displayCornerRadius));
 const CHROME_BACK: MotionCurve = { type: "timing", durationMs: 0 };
-const CHROME_GLASS_MS = 200;
+const CHROME_GLASS_MS = glassFadeMs;
 const PAGE_MOUNT_AFTER_GROWTH_MS = 34;
-const GROWN_SLACK_MS = 32;
 
 const criticalSpringLandsMs = (response: number, within: number) => {
   let x = 1;
@@ -1352,14 +1602,13 @@ const criticalSpringLandsMs = (response: number, within: number) => {
   return (x * response * 1000) / (2 * Math.PI);
 };
 const COVERING_LANDING_CAP_MS = 2 * criticalSpringLandsMs(OPENING_CARD_RESPONSE, CARD_LANDED);
-const ENTRANCE_PAINT_CAP_MS = 250;
-const ENTRANCE_CAPTURE_CAP_MS = 180;
 
 const DECK_RENDER_REACH = 6;
 const DECK_GESTURE_REACH = 3;
 
 const DECK_MOUNT_REACH = DECK_RENDER_REACH + DECK_GESTURE_REACH;
 const deckCardMounted = (index: number, anchor: number) => Math.abs(index - anchor) <= DECK_MOUNT_REACH;
+const deckWindow = (at: number, count: number) => `${Math.max(0, at - DECK_MOUNT_REACH)}:${Math.min(count - 1, at + DECK_MOUNT_REACH)}:${at <= 0}:${at >= count - 1}`;
 const BACKDROP_LEAD = 1.4;
 const FLY_CLOCK_SPAN_MS = 600_000;
 const LEAVE_SLACK_MS = 34;
@@ -1373,9 +1622,10 @@ const styles = StyleSheet.create({
 
 function CardMenuAt({ items, privately, at, control, floor, screen, onDismiss }: { items: MenuItem[]; privately: boolean; at: { x: number; y: number }; control?: Rect; floor: number; screen: { width: number; height: number }; onDismiss: (chosen?: boolean) => void }) {
   const insets = useSafeAreaInsets();
+  const width = useDesign() === "material" ? materialMenuWidth(items) : tabsLayout.menuWidth;
   return (
     <Portal exitMs={menuExitMs(true)}>
-      <Menu items={items} placer={pointPlacer(at, screen, insets, tabsLayout.menuWidth, { floor, control })} privately={privately} dimmed onDismiss={onDismiss} />
+      <Menu items={items} placer={pointPlacer(at, screen, insets, width, { floor, control })} privately={privately} dimmed onDismiss={onDismiss} />
     </Portal>
   );
 }

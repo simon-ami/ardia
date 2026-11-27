@@ -9,14 +9,13 @@ import { commandTitle, shortcutSources, UNAVAILABLE_COMMANDS } from "./commandCa
 import type { BrowserCommand } from "../../platform/commands";
 import { ALTERNATE_MODIFIER } from "./keyNotation";
 import { formatShortcut, resolveShortcuts, type ResolvedShortcuts, type Shortcut, type ShortcutOverrides, type ShortcutSource } from "./shortcuts";
-import { noteSettingsPick } from "../telemetry/settingsPickerCounts";
-import { ctrlTabChoiceOf, ctrlTabCombos, ctrlTabCustomTarget, ctrlTabOverrides, type CtrlTabChoice, type CtrlTabPreset } from "./ctrlTabKeys";
+import { ctrlTabCombos, ctrlTabCustomTarget, ctrlTabKeysOf, ctrlTabOverrides, type CtrlTabKeys } from "./ctrlTabKeys";
 
 export { cancelShortcutRecording, recordShortcut, type MenuShortcut } from "../../platform/commands";
 
 type MenuModifier = NonNullable<Extract<MenuItem, { id: string }>["modifiers"]>[number];
 type MenuKey = { key?: string; modifiers?: MenuModifier[] };
-type ShortcutState = { settings: { shortcuts: ShortcutOverrides; mouseShortcuts?: ShortcutOverrides }; profileOrder: readonly string[] };
+export type ShortcutState = { settings: { shortcuts: ShortcutOverrides; mouseShortcuts?: ShortcutOverrides }; profileOrder: readonly string[] };
 type MenuBar = { listed: ReadonlySet<string>; fixed: readonly ShortcutSource[] };
 
 const useMenuBar = create<{ bar: MenuBar | undefined; revision: number }>()(() => ({ bar: undefined, revision: 0 }));
@@ -46,7 +45,7 @@ export function resolvedShortcuts({ settings, profileOrder }: ShortcutState): Re
   return resolvedFor.resolved;
 }
 
-export const shortcutOf = (id: string, s: ShortcutState = useBrowser.getState()): Shortcut | undefined => resolvedShortcuts(s).bindings.get(id)?.[0];
+const shortcutOf = (id: string, s: ShortcutState = useBrowser.getState()): Shortcut | undefined => resolvedShortcuts(s).bindings.get(id)?.[0];
 
 export const commandsHolding = (shortcut: Shortcut, s: ShortcutState = useBrowser.getState()): string[] => resolvedShortcuts(s).holdersOf(shortcut);
 
@@ -131,14 +130,19 @@ function watchShortcuts(_key: string, listener: () => void): () => void {
   return () => void shortcutListeners.delete(listener);
 }
 
-export const ctrlTabChoice = (s: ShortcutState = useBrowser.getState()): CtrlTabChoice => ctrlTabChoiceOf(resolvedShortcuts(s));
+export const ctrlTabKeys = (s: ShortcutState = useBrowser.getState()): CtrlTabKeys => ctrlTabKeysOf(resolvedShortcuts(s));
 
-export function chooseCtrlTab(preset: CtrlTabPreset) {
-  const s = useBrowser.getState();
-  const combos = ctrlTabCombos(resolvedShortcuts(s));
-  if (!combos) return;
-  s.updateSettings({ shortcuts: ctrlTabOverrides(s.settings.shortcuts, combos, preset, resolvedShortcuts(s).defaultsOf) });
-  noteSettingsPick("ctrlTab", preset);
+export function ctrlTabShortcuts(s: ShortcutState = useBrowser.getState()): ShortcutOverrides | null {
+  const resolved = resolvedShortcuts(s);
+  const combos = ctrlTabCombos(resolved);
+  return combos && ctrlTabOverrides(s.settings.shortcuts, combos, resolved.defaultsOf);
+}
+
+export function restoreCtrlTab(): boolean {
+  const shortcuts = ctrlTabShortcuts();
+  if (!shortcuts) return false;
+  useBrowser.getState().updateSettings({ shortcuts });
+  return true;
 }
 
 export function ctrlTabCustomQuery(s: ShortcutState = useBrowser.getState()): string {
@@ -149,9 +153,9 @@ export function ctrlTabCustomQuery(s: ShortcutState = useBrowser.getState()): st
   return commandTitle(command, arg) ?? "";
 }
 
-export function useCtrlTabChoice(): CtrlTabChoice {
-  useMenuBar(() => ctrlTabChoice());
-  return useKeyed(watchShortcuts, ALL, () => ctrlTabChoice());
+export function useCtrlTabKeys(): CtrlTabKeys {
+  useMenuBar(() => ctrlTabKeys());
+  return useKeyed(watchShortcuts, ALL, () => ctrlTabKeys());
 }
 
 export function useShortcutAssignments(): readonly unknown[] {

@@ -8,6 +8,7 @@ import { splitRowPanes, splitTabIds, splitTabIdsOf } from "../splits/splits";
 import { groupIndex, splitIndex, stableList } from "../browser/structure";
 import { tileCells } from "../pins/tileFolders";
 import { entryKey, parseEntry } from "./entryKey";
+import { sameList } from "../../lib/lists";
 
 type SidebarEntries = { tiles: string[]; cells: string[]; pinned: string[]; list: string[] };
 
@@ -16,7 +17,7 @@ export const ENTRY_TAB_FIELDS = ["pin", "liveItem", "profileId", "url", "page"] 
 const placesAlike = (a: Tab | undefined, b: Tab | undefined) =>
   a === b || (!!a && !!b && a.pin === b.pin && a.liveItem === b.liveItem && a.profileId === b.profileId && !a.url === !b.url && hasPage(a) === hasPage(b));
 
-export function sameEntryTabs(tabs: BrowserState["tabs"], was: BrowserState["tabs"]): boolean {
+function sameEntryTabs(tabs: BrowserState["tabs"], was: BrowserState["tabs"]): boolean {
   if (tabs === was) return true;
   for (const id of changedIds(tabs, was)) if (!placesAlike(tabs[id], was[id])) return false;
   return true;
@@ -55,11 +56,10 @@ export function sidebarEntries(s: BrowserState, windowId: string, profileId?: st
   let result = computeEntries(s, windowId, profileId);
   if (cached) {
     const was = cached.result;
-    const same = (a: string[], b: string[]) => a.length === b.length && a.every((id, i) => id === b[i]);
-    const tiles = same(result.tiles, was.tiles) ? was.tiles : result.tiles;
-    const cells = same(result.cells, was.cells) ? was.cells : result.cells;
-    const pinned = same(result.pinned, was.pinned) ? was.pinned : result.pinned;
-    const list = same(result.list, was.list) ? was.list : result.list;
+    const tiles = sameList(result.tiles, was.tiles) ? was.tiles : result.tiles;
+    const cells = sameList(result.cells, was.cells) ? was.cells : result.cells;
+    const pinned = sameList(result.pinned, was.pinned) ? was.pinned : result.pinned;
+    const list = sameList(result.list, was.list) ? was.list : result.list;
     result = tiles === was.tiles && cells === was.cells && pinned === was.pinned && list === was.list ? was : { tiles, cells, pinned, list };
   }
   if (!byProfile) memo.set(windowId, (byProfile = new Map()));
@@ -97,17 +97,18 @@ function computeEntries(s: BrowserState, windowId: string, profileId?: string): 
   return { tiles, cells: tileCells(s.tabs, tiles), pinned, list };
 }
 
-export function numberedTabs(s: BrowserState, windowId: string): string[] {
+export function numberedTabs(s: BrowserState, windowId: string, eligible: (id: string) => boolean = () => true): string[] {
   const { tiles, pinned, list } = sidebarEntries(s, windowId);
   const active = activeTabId(s, windowId);
   const profileId = s.windows[windowId]?.profileId;
-  const latest = (ids: string[]) => ids.reduce<string | undefined>((a, b) => (!a || s.tabs[b]!.lastActiveAt > s.tabs[a]!.lastActiveAt ? b : a), undefined);
+  const latest = (ids: string[]) => ids.filter(eligible).reduce<string | undefined>((a, b) => (!a || s.tabs[b]!.lastActiveAt > s.tabs[a]!.lastActiveAt ? b : a), undefined);
   const collapsedGroup = (groupId: string): string[] => {
     const keptRows = profileId ? keptEntries(s, windowId, profileId, groupId) : [];
     const kept = keptRows.flatMap(rowTab);
     const onScreen = new Set(keptRows.flatMap((entry) => entryTabIds(s, entry)));
     const members = s.groups[groupId]!.tabIds.filter((id) => s.tabs[id]);
-    const header = latest(members.filter((id) => !onScreen.has(id))) ?? latest(members);
+    const hidden = members.filter((id) => !onScreen.has(id));
+    const header = hidden.length ? latest(hidden) : latest(members);
     return header ? [header, ...kept] : kept;
   };
   const rowTab = (entry: string): string[] => {

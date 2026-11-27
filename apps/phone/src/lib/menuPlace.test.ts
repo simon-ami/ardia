@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { ANDROID_MENU_SIZES, IPHONE_MENU_SIZES, menuAt, menuHeight, menuOnTrigger, menuShrink, tallestMenuPage } from "./menuPlace.ts";
+import { ANDROID_MENU_SIZES, IPHONE_MENU_SIZES, menuAt, menuHeight, menuOnTrigger, keepAbove, menuShrink, roomAbove, tallestMenuPage } from "./menuPlace.ts";
 
 const { row: MENU_ROW, heading: MENU_HEADING, divider: MENU_DIVIDER, padding: MENU_PADDING } = IPHONE_MENU_SIZES;
 
@@ -22,6 +22,18 @@ test("a menu too tall for either way keeps clear of the edges, and the host's or
   const row = { x: 16, y: 400, width: 360, height: 52 };
   assert.equal(menuOnTrigger(row, host, host, 250, 900, 8).top, 8);
   assert.equal(menuOnTrigger({ x: 16, y: 300, width: 100, height: 40 }, { ...host, y: 24 }, { ...host, y: 24 }, 250, 200, 8).top, 276);
+});
+
+test("a Material menu that must clear its trigger never covers it: too tall for either side, it takes the roomier side and scrolls there, and keeps its height when it fits", () => {
+  const room = { x: 0, y: 0, width: 392, height: 400 };
+  const trigger = { x: 16, y: 176, width: 100, height: 48 };
+  assert.deepEqual(menuOnTrigger(trigger, room, room, 250, 300, 8, undefined, undefined, true), { left: 16, top: 224, height: 168, origin: "left top" });
+  const high = { ...trigger, y: 100 };
+  assert.deepEqual(menuOnTrigger(high, room, room, 250, 300, 8, undefined, undefined, true), { left: 16, top: 148, height: 244, origin: "left top" });
+  const low = { ...trigger, y: 260 };
+  assert.deepEqual(menuOnTrigger(low, room, room, 250, 300, 8, undefined, undefined, true), { left: 16, top: 8, height: 252, origin: "left bottom" });
+  assert.deepEqual(menuOnTrigger(high, room, room, 250, 200, 8, undefined, undefined, true), { left: 16, top: 148, height: 200, origin: "left top" });
+  assert.deepEqual(menuOnTrigger(trigger, room, room, 250, 300, 8), { left: 16, top: 92, height: 300, origin: "left top" });
 });
 
 test("a menu's height counts its rows, headings and dividers", () => {
@@ -121,4 +133,29 @@ test("a long-press menu stays off a bar below it: opening down, it ends above th
 test("a closing tap menu shrinks to its trigger's size, never past it", () => {
   assert.deepEqual(menuShrink({ x: 336, y: 66, width: 44, height: 44 }, 250, 272), { x: 44 / 250, y: 44 / 272 });
   assert.deepEqual(menuShrink({ x: 16, y: 700, width: 360, height: 52 }, 250, 40), { x: 1, y: 1 });
+});
+
+test("a menu anchored on a tile above the keyboard stays above it: a 12-row folder on an 852 pt phone with the keyboard's top at 517 ends above 517 and scrolls", () => {
+  const phone = { x: 0, y: 0, width: 393, height: 852 };
+  const tile = { x: 16, y: 300, width: 82, height: 56 };
+  const wanted = 12 * MENU_ROW + MENU_PADDING;
+  const free = menuOnTrigger(tile, phone, phone, 250, wanted, 8);
+  assert.ok(free.top + free.height > 517);
+  const bounded = menuOnTrigger(tile, phone, roomAbove(phone, 517), 250, wanted, 8);
+  assert.ok(bounded.top + bounded.height <= 517);
+  assert.ok(bounded.height < wanted);
+  assert.deepEqual(roomAbove(phone, null), phone);
+  assert.deepEqual(roomAbove(phone, 900), phone);
+});
+
+test("the keyboard's top is a hard limit: an anchor measured below it, where the stage's lift hasn't moved it, still gets a menu that ends above the keyboard", () => {
+  const phone = { x: 0, y: 0, width: 393, height: 852 };
+  const unlifted = { x: 16, y: 520, width: 82, height: 56 };
+  const room = roomAbove(phone, 517);
+  const loose = menuOnTrigger(unlifted, phone, room, 250, 12 * MENU_ROW + MENU_PADDING, 8);
+  assert.ok(loose.top + loose.height > 517);
+  const held = keepAbove(loose, 517 - 8, 8);
+  assert.ok(held.top >= 8);
+  assert.ok(held.top + held.height <= 509);
+  assert.deepEqual(keepAbove(loose, null, 8), loose);
 });

@@ -127,6 +127,27 @@ test("cancelling the sheet installs nothing and says so; while a sheet is up, a 
   assert.equal(officialPlugins(P(), true, hidden)[0].state, "available");
 });
 
+test("an install whose plugins.json can't be written tells the caller instead of waiting forever", async () => {
+  reset();
+  const done = installOfficialPlugin("cli", { showSheet: false });
+  stub.refusedWrites.on = true;
+  try {
+    assert.equal(lifecycle.enablePlugin("cli", P().listings.cli.hash), false);
+  } finally {
+    stub.refusedWrites.on = false;
+  }
+  assert.deepEqual(await done, { ok: false, reason: "plugins.json couldn't be saved. Try again." });
+  assert.equal(P().consent, null, "a settled install leaves no sheet behind");
+  assert.equal(P().unsaved, "cli");
+  const again = installOfficialPlugin("cli", { showSheet: false });
+  assert.equal(P().consent?.name, "cli", "asking again is accepted");
+  assert.equal(P().unsaved, null);
+  lifecycle.dismissPluginConsent();
+  assert.deepEqual(await again, { ok: false, reason: "Cancelled.", cancelled: true });
+  await settle();
+  assert.deepEqual(host.links, []);
+});
+
 test("a link that fails is reported to the caller; asking again links it and says ok", async () => {
   const TOOL = JSON.stringify({ manifest: 1, name: "tool", title: "Tool", alwaysOn: true, official: true, programs: [{ name: "tool-x", path: "bin/x" }] });
   await scan([{ name: "cli", text: CLI, ...BUILT_IN }, { name: "other", status: "ok", text: OTHER, folderId: "1:2" }, { name: "tool", text: TOOL, ...BUILT_IN }]);
@@ -322,7 +343,19 @@ test("a stale answer from the native side changes nothing; a refused link is sho
   host.linkResult = { ok: false, reason: "a test instance puts programs on PATH only with ARDIA_INSTANCE cliBinDir set" };
   await turnOn("other");
   assert.deepEqual(P().programs.other, { state: "failed", hash: P().listings.other.hash, reason: host.linkResult.reason });
-  assert.equal(takePluginCounts().program_link_failures, 1);
+  const failedCounts = takePluginCounts();
+  assert.equal(failedCounts.program_link_failures, 1);
+  assert.equal(failedCounts.program_link_cause_other, 1);
+  lifecycle.disablePlugin("other");
+  await settle();
+  reset();
+  takePluginCounts();
+  host.linkResult = { ok: true, linked: [], refused: { "other-tool": "/home/.local/bin isn't a folder you own" }, causes: { "other-tool": "bin_folder" }, binDir: "/home/.local/bin", adopted: false };
+  await turnOn("other");
+  const refusedCounts = takePluginCounts();
+  assert.equal(refusedCounts.program_link_failures, 1);
+  assert.equal(refusedCounts.program_link_cause_bin_folder, 1, "each refused program counts its cause");
+  assert.equal(Object.hasOwn(P().programs.other, "causes"), false, "causes are only counted, not kept in state");
   const { relinkPrograms } = await import("./programs.ts");
   host.linkResult = null;
   relinkPrograms("other");
@@ -361,12 +394,29 @@ test("a plugin you added has its programs removed with it", async () => {
 test("what the command line gets, as Settings shows it", () => {
   const texts = consentLines(readManifest(CLI).manifest).map((l) => l.text);
   assert.deepEqual(texts, [
+    "Turns on control in Settings › Advanced. While it's on, any program you run, and the commands Ardia runs for it after updates, can fully control Ardia: every tab and page, your signed-in sites and their cookies, and uploads and downloads of any file on this Mac",
     "Adds ardia to your PATH. It runs as you, outside Ardia's sandbox",
     "After updates, runs ardia skills install --auto, ardia skills refresh",
     "Adds ~/.local/bin to your PATH in your shell's login file",
-    "Lets any program you run drive your tabs and pages, with your logins, while control is on in Settings › Advanced",
-  ], "four honest lines: the program, what runs after updates, the PATH line and control");
+  ], "four honest lines, full control first: control, the program, what runs after updates and the PATH line");
   assert.ok(!texts.some((t) => t.includes("in the background")), "a program-only plugin runs nothing in the background");
+});
+
+test("a plugin whose programs run as you says first that they can fully control Ardia, without asking for control", async () => {
+  const { fullControlLine, FULL_CONTROL_SUMMARY } = await import("./consent.ts");
+  const other = readManifest(OTHER).manifest;
+  const lines = consentLines(other).map((l) => l.text);
+  assert.equal(lines[0], "The other-tool command runs as you, so while control is on in Settings › Advanced, it can fully control Ardia: every tab and page, your signed-in sites and their cookies, and uploads and downloads of any file on this Mac");
+  assert.equal(fullControlLine(other)?.text, lines[0]);
+  assert.equal(FULL_CONTROL_SUMMARY, "Can fully control Ardia");
+  const cli = readManifest(CLI).manifest;
+  assert.ok(consentLines(cli, { controlOff: true })[0].text.startsWith("While control is on in Settings › Advanced, any program you run"), "an Off you chose stays off, so the line doesn't say it turns control on");
+  assert.ok(consentLines(cli, { installed: true })[0].text.startsWith("While control is on in Settings › Advanced, any program you run"), "an installed plugin's page describes the access it has, not what turning it on does");
+  const pair = readManifest(JSON.stringify({ manifest: 1, name: "pair", title: "Pair", programs: [{ name: "a", path: "bin/a", afterUpdate: [["sync"]] }, { name: "b", path: "bin/b" }] })).manifest;
+  assert.ok(fullControlLine(pair)?.text.startsWith("The a and b commands run as you, as do the commands Ardia runs for it after updates, so while control is on in Settings › Advanced, they can fully control Ardia"));
+  const sandboxed = readManifest(JSON.stringify({ manifest: 1, name: "boxed", title: "Boxed", main: "dist/index.js", permissions: { tabs: "read" } })).manifest;
+  assert.equal(fullControlLine(sandboxed), null, "a plugin that only runs in Ardia's sandbox can't read the control token");
+  assert.ok(!consentLines(sandboxed).some((l) => l.text.includes("fully control")));
 });
 
 test("the official catalogue, the onboarding picks and the anchor aliases come from the pin file", async () => {
@@ -378,7 +428,7 @@ test("the official catalogue, the onboarding picks and the anchor aliases come f
   assert.deepEqual(PRESELECTED_PLUGINS, pin.plugins.filter((p) => p.preselected).map((p) => p.name));
   const made = officialCatalogue({
     plugins: [
-      { name: "one", title: "One", blurb: "First.", icon: "a", preselected: true, anchorAliases: ["oldOne"], version: "1.0.0" },
+      { name: "one", title: "One", blurb: "First.", icon: "a", preselected: true, anchorAliases: ["oldOne"], version: "1.0.0", legacyInstall: { program: "one-cmd", root: "Library/Application Support/Ardia/CLI", current: "current" } },
       { name: "two", title: "Two", blurb: "Second.", icon: "b" },
     ],
     comingSoon: [{ name: "soon", title: "Soon", blurb: "Later.", icon: "c", experiment: "officialPluginsAi" }],
@@ -386,6 +436,9 @@ test("the official catalogue, the onboarding picks and the anchor aliases come f
   assert.deepEqual(made.plugins, [{ name: "one", title: "One", blurb: "First.", icon: "a" }, { name: "two", title: "Two", blurb: "Second.", icon: "b" }]);
   assert.deepEqual(made.preselected, ["one"]);
   assert.deepEqual(made.anchorAliases, { one: ["oldOne"], two: [] });
+  assert.deepEqual(made.legacyPrograms, { one: "one-cmd" });
+  const { OFFICIAL_LEGACY_PROGRAMS } = await import("./officialPin.ts");
+  assert.deepEqual(OFFICIAL_LEGACY_PROGRAMS, Object.fromEntries(pin.plugins.filter((p) => p.legacyInstall).map((p) => [p.name, p.legacyInstall.program])));
   assert.deepEqual(made.comingSoon, [{ name: "soon", title: "Soon", blurb: "Later.", icon: "c", experiment: "officialPluginsAi" }]);
 });
 

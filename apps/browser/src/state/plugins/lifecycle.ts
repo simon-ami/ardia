@@ -12,7 +12,7 @@ import { programControlOn, userTurnedControlOff } from "../app/programControlSet
 import { applySettingsPatch, planDisable, planEnable, spliceApplied } from "./defaults";
 import { pluginRecordsSaved, writePluginRecords } from "./savedState";
 import { settleInstall } from "./installWaiters";
-import { abandonWithdrawal, activeManifest, approvalMatches, setOfficialFetch, commitPlugins, consentListing, currentPlugins, withdrawalsFor, type PluginsCommit, keepsInstalledFlag, NO_RECORD, recordApproves, recordOf, usePlugins, type PluginListing, type PluginRecord } from "./store";
+import { abandonWithdrawal, activeManifest, approvalMatches, setOfficialFetch, clearUnsaved, UNSAVED, commitPlugins, consentListing, currentPlugins, withdrawalsFor, type PluginsCommit, keepsInstalledFlag, NO_RECORD, recordApproves, recordOf, usePlugins, type PluginListing, type PluginRecord } from "./store";
 import { officialPluginsPinned, promoteOfficialPlugin } from "../../platform/plugins";
 import { PLATFORM_FEATURES } from "../../lib/platformFeatures";
 import { pluginsScanned } from "./scanListeners";
@@ -22,12 +22,12 @@ import { clearPluginSurfaces } from "./surfaces";
 import { clearPluginSecrets, type SecretsCleared } from "./secrets";
 import { closePluginStorage, reopenPluginStorage } from "./storage";
 import { forgetPluginGestures } from "./gestures";
-import { dropCalls } from "./tools";
 import { sendValues } from "./channel";
 import { adoptLegacyInstalls, reconcilePrograms, removePrograms } from "./programs";
 import { isBundledRetiredRecord, noteRetiredRecords, RETIRED_OFFICIAL_PLUGINS } from "./retiredOfficial";
+import { ownValue } from "../../lib/decode";
 
-export const MAX_PLUGINS = 64;
+const MAX_PLUGINS = 64;
 
 const READ_PROBLEMS: Record<Exclude<PluginFolderEntry["status"], "ok">, string> = {
   missing: "The folder has no plugin.json",
@@ -44,7 +44,7 @@ const officialFlags = (e: PluginFolderEntry): Partial<PluginListing> => ({
   ...(e.ignoresUserFolder ? { ignoresUserFolder: true } : {}),
 });
 
-export function listingsOf(entries: PluginFolderEntry[], registry: ProgramClaims = NO_CLAIMS): PluginListing[] {
+function listingsOf(entries: PluginFolderEntry[], registry: ProgramClaims = NO_CLAIMS): PluginListing[] {
   const settings = useBrowser.getState().settings;
   const version = systemInfo().appVersion;
   return entries
@@ -56,7 +56,7 @@ export function listingsOf(entries: PluginFolderEntry[], registry: ProgramClaims
     }));
 }
 
-export function candidatesOf(entries: PluginFolderEntry[], registry: ProgramClaims = NO_CLAIMS): PluginListing[] {
+function candidatesOf(entries: PluginFolderEntry[], registry: ProgramClaims = NO_CLAIMS): PluginListing[] {
   const settings = useBrowser.getState().settings;
   const version = systemInfo().appVersion;
   return entries.flatMap((e) => {
@@ -76,7 +76,7 @@ function saveRecords(records: Record<string, PluginRecord>, consent: ConsentToke
   return true;
 }
 
-function updateRecord(name: string, change: (r: PluginRecord) => PluginRecord | null, consent: ConsentToken | null): boolean {
+export function updateRecord(name: string, change: (r: PluginRecord) => PluginRecord | null, consent: ConsentToken | null): boolean {
   const records = { ...currentPlugins().records };
   const next = change(recordOf(currentPlugins(), name));
   if (next) records[name] = next;
@@ -125,9 +125,9 @@ function forgetRemoved(consent: ConsentToken | null) {
   }
 }
 
-export const WITHDRAW_DEADLINE_MS = 1000;
+const WITHDRAW_DEADLINE_MS = 1000;
 
-export function withdrawBefore(next: PluginsCommit, consent: ConsentToken | null): Promise<void> | null {
+function withdrawBefore(next: PluginsCommit, consent: ConsentToken | null): Promise<void> | null {
   const waits = withdrawalsFor(next).map((w) => w.then(() => "done" as const, () => "done" as const));
   if (!waits.length) return null;
   let timer: ReturnType<typeof setTimeout> | undefined;
@@ -140,7 +140,7 @@ export function withdrawBefore(next: PluginsCommit, consent: ConsentToken | null
 
 const listingsByName = (listings: PluginListing[]) => Object.fromEntries(listings.map((l) => [l.name, l]));
 
-export function applyListings(given: PluginListing[], consent: ConsentToken | null, candidates?: PluginListing[]) {
+function applyListings(given: PluginListing[], consent: ConsentToken | null, candidates?: PluginListing[]) {
   const records = currentPlugins().records;
   const listings = given.filter((l) => keptLegacy(l, records));
   const byName = listingsByName(listings);
@@ -203,9 +203,9 @@ function closeChangedConsent() {
 
 export function consentTarget(name: string, official = false): PluginListing | undefined {
   const s = currentPlugins();
-  const listing = Object.hasOwn(s.listings, name) ? s.listings[name] : undefined;
+  const listing = ownValue(s.listings, name);
   if (!official && listing && !listing.official) return listing;
-  const candidate = Object.hasOwn(s.candidates, name) ? s.candidates[name] : undefined;
+  const candidate = ownValue(s.candidates, name);
   if (candidate?.manifest && candidate.hash) return candidate;
   if (official && !listing?.official) return undefined;
   if (listing?.legacy) return undefined;
@@ -215,7 +215,7 @@ export function consentTarget(name: string, official = false): PluginListing | u
 export function requestPluginConsent(name: string, official = false): boolean {
   const target = consentTarget(name, official);
   if (currentPlugins().consent || !target?.manifest || !target.hash) return false;
-  usePlugins.setState({ consent: { id: ++lastConsentId, name, hash: target.hash } });
+  usePlugins.setState({ consent: { id: ++lastConsentId, name, hash: target.hash }, unsaved: null });
   return true;
 }
 
@@ -253,11 +253,16 @@ export function enablePlugin(name: string, hash: string): boolean {
   const builtIn = keepsInstalledFlag(listing) ? { installed: true, ...(before.controlGranted ? { controlGranted: true } : {}) } : {};
   const current = currentPlugins().listings[name];
   const previous = candidate && recordApproves(current, before) ? (approvalMatches(current, before.approved) ? before.approved : before.previous) : undefined;
-  if (!saveRecords({ ...records, [name]: { enabled: true, approved: hash, values, applied: plan.applied, ...builtIn, ...(previous ? { previous } : {}) } }, consent)) return false;
+  if (!saveRecords({ ...records, [name]: { enabled: true, approved: hash, values, applied: plan.applied, ...builtIn, ...(previous ? { previous } : {}), ...(before.sites ? { sites: before.sites } : {}) } }, consent)) {
+    usePlugins.setState({ consent: null, unsaved: name });
+    settleInstall(name, { ok: false, reason: UNSAVED });
+    return false;
+  }
   if (candidate) void promoteCandidate(name, listing, consent);
   const asksControl = manifest.permissions.control;
   applySettingsPatch(kept || !asksControl || programControlOn(useBrowser.getState()) || userTurnedControlOff() ? plan.patch : { ...plan.patch, cliControl: true });
   usePlugins.setState({ consent: null });
+  clearUnsaved(name);
   notePlugin("plugin_enables", consent);
   reconcilePlugins(consent);
   settleInstall(name, { ok: true });
@@ -292,13 +297,14 @@ export async function promoteCandidate(name: string, candidate: PluginListing, c
 
 export function turnOnApprovedPlugin(name: string): boolean {
   const s = currentPlugins();
-  const listing = Object.hasOwn(s.listings, name) ? s.listings[name] : undefined;
+  const listing = ownValue(s.listings, name);
   const before = recordOf(s, name);
   if (!listing?.manifest || before.enabled || !recordApproves(listing, before) || removing.has(name) || s.consent) return false;
   const consent = consentNow();
   const plan = planEnable(listing.manifest, s.records, name, before.applied);
   const installed = keepsInstalledFlag(listing) ? { installed: true } : {};
   if (!saveRecords({ ...s.records, [name]: { ...before, enabled: true, applied: plan.applied, ...installed } }, consent)) return false;
+  clearUnsaved(name);
   applySettingsPatch(plan.patch);
   notePlugin("plugin_enables", consent);
   reconcilePlugins(consent);
@@ -330,14 +336,15 @@ export function turnOffPlugin(name: string, consent: ConsentToken | null): Promi
 }
 
 const removing = new Set<string>();
+export const isRemoving = (name: string) => removing.has(name);
 
 const secretsLeftReason = (name: string, secrets: SecretsCleared) =>
   `Its files are removed, but ${secrets.remaining.length === 1 ? "1 secret is" : secrets.remaining.length ? `${secrets.remaining.length} secrets are` : "its secrets may be"} still in your Keychain, under ardia.plugin.${name}. Delete them in Keychain Access.`;
 
-export type RemovalIdentity = { official: boolean; folderId: string | null };
+type RemovalIdentity = { official: boolean; folderId: string | null };
 
 export function removalIdentity(name: string): RemovalIdentity {
-  const listed = Object.hasOwn(currentPlugins().listings, name) ? currentPlugins().listings[name] : undefined;
+  const listed = ownValue(currentPlugins().listings, name);
   const official = listed ? !!listed.official : !!currentPlugins().pinned?.some((p) => p.name === name) || Object.hasOwn(currentPlugins().candidates, name);
   return { official, folderId: listed?.folderId || null };
 }

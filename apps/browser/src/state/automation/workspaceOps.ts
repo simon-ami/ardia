@@ -6,8 +6,8 @@ import { EMOJI_GROUPS } from "../../lib/emojiData";
 import { urlParts } from "../../lib/urlParts";
 import { internalPageOf } from "../pages/urls";
 
-export const MAX_OPS = 500;
-export const MAX_URLS = 100;
+const MAX_OPS = 500;
+const MAX_URLS = 100;
 const MAX_ID = 128;
 const MAX_TEXT = 200;
 const MAX_URL = 8192;
@@ -40,8 +40,8 @@ const SPECS = {
   "group.delete": { required: ["group"], fields: { group: "group" } },
 } satisfies Record<string, { required: string[]; fields: Record<string, Kind> }>;
 
-export type OpName = keyof typeof SPECS;
-export const OP_NAMES = Object.keys(SPECS) as OpName[];
+type OpName = keyof typeof SPECS;
+const OP_NAMES = Object.keys(SPECS) as OpName[];
 
 export type Op = { op: OpName; [field: string]: unknown };
 
@@ -152,7 +152,7 @@ export function parseOps(value: unknown, urlRule: UrlRule = openableUrl): Op[] |
     if (typeof raw !== "object" || raw === null || Array.isArray(raw)) return fail("an operation is a JSON object.");
     const fields = raw as Record<string, unknown>;
     const name = fields.op;
-    if (typeof name !== "string" || !(name in SPECS)) return fail(`op is one of: ${OP_NAMES.join(", ")}.`);
+    if (typeof name !== "string" || !Object.hasOwn(SPECS, name)) return fail(`op is one of: ${OP_NAMES.join(", ")}.`);
     const spec = SPECS[name as OpName] as { required: string[]; fields: Record<string, Kind> };
     const op: Op = { op: name as OpName };
     for (const [key, given] of Object.entries(fields)) {

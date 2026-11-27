@@ -44,6 +44,8 @@ export function onInterfaceScaleSettled(listener: (scale: number) => void): () =
 
 export const devicePixelsPerRootPoint = (scale = currentInterfaceScale()): number => PixelRatio.get() * scale;
 
+export const useDevicePixelsPerRootPoint = (): number => devicePixelsPerRootPoint(useCurrentInterfaceScale());
+
 export const snappedToDevicePixels = (rootPoints: number): number => snappedToGrid(rootPoints, devicePixelsPerRootPoint());
 
 export const rootSizeOfFrame = (frame: readonly number[], scale = currentInterfaceScale()): Size => ({ width: rootLength(frame[2]!, scale), height: rootLength(frame[3]!, scale) });

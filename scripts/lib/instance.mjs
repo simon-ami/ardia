@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { execFileSync, spawn, spawnSync } from "node:child_process";
+import { execFile, execFileSync, spawn, spawnSync } from "node:child_process";
 import { appendFileSync, existsSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { createServer, request as httpRequest } from "node:http";
 import { createServer as createNetServer } from "node:net";
@@ -7,7 +7,9 @@ import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { forBuild, launchVariables, mergeLaunchEnv, scratchInstance } from "./launchEnv.mjs";
 
-export { launchVariables, mergeLaunchEnv };
+import { isAlive } from "./pid.mjs";
+
+export { isAlive, launchVariables, mergeLaunchEnv };
 
 export const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const here = fileURLToPath(import.meta.url);
@@ -25,7 +27,7 @@ export function parsePort(value) {
   return n;
 }
 const pidList = (text) => [...new Set(text.split(/\s+/).filter(Boolean).map(Number))].filter((n) => Number.isInteger(n) && n > 0);
-export const commandIsBinary = (command, binary) => command === binary || command.startsWith(`${binary} `);
+const commandIsBinary = (command, binary) => command === binary || command.startsWith(`${binary} `);
 export function listenerPids(port) {
   let r;
   for (let attempt = 0; attempt < 3; attempt++) {
@@ -35,7 +37,7 @@ export function listenerPids(port) {
   if (r.error || r.status > 1) throw new Error(`lsof failed for port ${port}: ${r.error ?? r.stderr}`);
   return pidList(r.stdout);
 }
-export function parseProcessLine(line) {
+function parseProcessLine(line) {
   const m = /^\s*(\S+\s+\S+\s+\S+\s+\S+\s+\S+)\s+(.*\S)\s*$/.exec(line);
   return m ? { started: m[1], command: m[2] } : null;
 }
@@ -57,7 +59,7 @@ export function binaryPids(binary) {
   return new Set(r.stdout.split("\n").map((l) => /^\s*(\d+)\s+(.*)$/.exec(l))
     .filter((m) => m && commandIsBinary(m[2], binary)).map((m) => Number(m[1])));
 }
-export function ownedCandidate(listeners, before, commandOf, binary) {
+function ownedCandidate(listeners, before, commandOf, binary) {
   if (!listeners.length) return null;
   if (listeners.length !== 1) throw new Error(`port has ${listeners.length} listeners: ${listeners.join(", ")}`);
   const [pid] = listeners;
@@ -67,7 +69,7 @@ export function ownedCandidate(listeners, before, commandOf, binary) {
   return pid;
 }
 export const realPath = (path) => { try { return realpathSync(path); } catch { return path; } };
-export function spawnedPids(binary, before, port, dataDirs) {
+function spawnedPids(binary, before, port, dataDirs) {
   const r = processTable(["pid", "ppid", "command"]);
   if (r.status !== 0) return [];
   const rows = r.stdout.split("\n").map((l) => /^\s*(\d+)\s+(\d+)\s+(.*)$/.exec(l)).filter(Boolean)
@@ -83,7 +85,6 @@ async function killSpawned(pids) {
   for (const end = Date.now() + 5000; pids.some(isAlive) && Date.now() < end; await sleep(100));
   for (const pid of pids.filter(isAlive)) try { process.kill(pid, "SIGKILL"); } catch {}
 }
-export const isAlive = (pid) => { try { process.kill(pid, 0); return true; } catch (e) { return e.code === "EPERM"; } };
 export const binaryOf = (app) => join(app, "Contents/MacOS",
   execFileSync("plutil", ["-extract", "CFBundleExecutable", "raw", join(app, "Contents/Info.plist")]).toString().trim());
 export const appEnv = (app, env) => {
@@ -378,17 +379,24 @@ export async function launch(app, opts = {}) {
   const log = resolve(opts.log ?? join(data, "app.out.log"));
   const before = binaryPids(binary);
   const launchedAt = Date.now();
-  execFileSync("open", ["-g", "-n", ...Object.entries(env).filter(([, v]) => v !== null && v !== undefined).flatMap(([k, v]) => ["--env", `${k}=${v}`]),
-    "--stdout", log, "--stderr", log, ...(opts.urls?.length ? ["-a", app, ...opts.urls] : [app]), ...(opts.args?.length ? ["--args", ...opts.args] : [])]);
+  const openArgs = ["-g", "-n", ...Object.entries(env).filter(([, v]) => v !== null && v !== undefined).flatMap(([k, v]) => ["--env", `${k}=${v}`]),
+    "--stdout", log, "--stderr", log, ...(opts.urls?.length ? ["-a", app, ...opts.urls] : [app]), ...(opts.args?.length ? ["--args", ...opts.args] : [])];
+  await new Promise((done, fail) => execFile("open", openArgs, { timeout: 30000 }, (error) => (error ? fail(error) : done())));
   let owned = null;
   try {
     for (const end = Date.now() + (opts.startTimeout ?? 60000); !owned && Date.now() < end; await sleep(100)) {
+      opts.track?.();
       let info;
       const pid = ownedCandidate(listenerPids(port), before, (p) => (info = processInfo(p))?.command, binary);
       if (pid && info) owned = { pid, started: info.started };
     }
     if (!owned) throw new Error(`the app didn't listen on DevTools port ${port} within ${(opts.startTimeout ?? 60000) / 1000} s (log: ${log})`);
+    opts.track?.();
   } catch (e) {
+    if (opts.teardown) {
+      await opts.teardown();
+      throw e;
+    }
     const dirs = [...new Set([data, realPath(data)])];
     let spawned = [];
     for (const end = Date.now() + 10000; !spawned.length && Date.now() < end; await sleep(250)) spawned = spawnedPids(binary, before, port, dirs);
@@ -400,7 +408,10 @@ export async function launch(app, opts = {}) {
     try {
       await instance.ready(typeof opts.ready === "string" ? { test: opts.ready } : typeof opts.ready === "object" ? opts.ready : {});
     } catch (e) {
-      await instance.quit({ graceful: false });
+      if (opts.teardown) {
+        opts.track?.();
+        await opts.teardown();
+      } else await instance.quit({ graceful: false });
       throw e;
     }
   return instance;

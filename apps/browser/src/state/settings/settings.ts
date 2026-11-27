@@ -16,9 +16,8 @@ import type { JsonSchema } from "../../lib/jsonSchema";
 import { PROVIDERS_SCHEMA } from "../omnibox/providerSchema";
 import { COMMAND_BAR_START_SCHEMA, isCommandBarStart, type CommandBarStart } from "../omnibox/commandBarStart";
 import { PRESS_MOTIONS } from "../../lib/pressMotion";
-import { noteAutoHideTabsChosen } from "../telemetry/autoHideTabsChoices";
 import { READER_FONTS, READER_SIZE_NAMES } from "../reader/tokens";
-import { noteMinimalismToggled } from "../telemetry/minimalismCounts";
+import { noteSettingChoices } from "../telemetry/settingChoices";
 import { checkedSettingsPatch, keptSettingsPatch } from "./settingsPatch";
 
 export const DEFAULT_PROFILE_ID = "default";
@@ -26,7 +25,6 @@ export const DEFAULT_PROFILE_ID = "default";
 export type SettingSpec<T> = { default: T; valid: (value: unknown) => boolean; synced: boolean; schema: JsonSchema; values?: readonly T[] };
 
 const SYNCED = true;
-
 const isPlain = (v: unknown): v is Record<string, unknown> => isFields(v) && [Object.prototype, null].includes(Object.getPrototypeOf(v));
 const isRecordOf = (v: unknown, item: (x: unknown) => boolean) => isPlain(v) && Object.values(v).every(item);
 const isWidth = (v: unknown) => typeof v === "number" && Number.isFinite(v) && v > 0;
@@ -71,17 +69,21 @@ export const SETTING_SPECS = {
   hideToolbarWhileScrolling: flag(false, SYNCED),
   newTabPosition: oneOf(["top", "bottom", "nextToCurrent"], "bottom", SYNCED),
   newTabButtonPosition: oneOf(["top", "bottom"], "bottom", SYNCED),
+  showTabMenuButton: flag(true, SYNCED),
   appLinksFirst: flag(false, SYNCED),
   newTabOpens: oneOf(["page", "commandBar"], "page", SYNCED),
   newTabUrl: text("", SYNCED),
   warnBeforeClosingLastTab: flag(true, SYNCED),
+  afterClosingTab: oneOf(["previouslyActive", "tabAbove", "tabBelow"], "previouslyActive", SYNCED),
+  tabSwitcherOrder: oneOf(["recent", "inOrder"], "recent", SYNCED), tabSwitcherView: oneOf(["thumbnails", "compactList", "none"], "thumbnails", SYNCED),
   keepTopAppsRunning: flag(false, SYNCED),
   tabReorderHaptics: flag(true, SYNCED),
+  swipeBetweenTabs: flag(true, SYNCED),
   undoReopensClosedTab: flag(false, SYNCED),
   warnBeforeMovingTabsToProfile: flag(true, SYNCED),
   shareTabsAcrossWindows: flag(false),
   extendWebsiteColor: flag(true, SYNCED),
-  cmdClickCreatesTabGroup: flag(true, SYNCED),
+  cmdClickCreatesTabGroup: flag(false, SYNCED),
   optShiftClickOpensInGroup: flag(true, SYNCED),
   peekModifier: oneOf(["alt", "shift", "off"], "shift", SYNCED),
   peekLinksToOtherSites: flag(true, SYNCED),
@@ -120,6 +122,7 @@ export const SETTING_SPECS = {
   selectedTopApp: oneOf(["ring", "fill", "outline"], "ring", SYNCED),
   elementOutlines: flag(true, SYNCED),
   interfaceStyle: oneOf(["glass", "classic"], "glass", SYNCED),
+  windowButtons: oneOf(["native", "trafficLights", "hidden"], "native"),
   glassTintWithTheme: flag(false, SYNCED),
   glassTintAmount: fraction(0.8, SYNCED),
   fadeUnloadedTabs: flag(false, SYNCED),
@@ -131,6 +134,7 @@ export const SETTING_SPECS = {
   batterySaverWhen: oneOf(["lowBattery", "unplugged", "never"], "lowBattery"),
   unloadProfilesAfter: oneOf(["never", "5m", "15m", "1h", "2h"], "never"),
   memorySaver: flag(true),
+  busyTabWarnings: flag(true),
   memorySaverMode: oneOf(["moderate", "balanced", "maximum"], "balanced"),
   loadProfilesWhenOpened: flag(true),
   keepActiveSites: shaped<string[]>([], isStringList, STRING_LIST, SYNCED),
@@ -138,7 +142,7 @@ export const SETTING_SPECS = {
   showFullUrl: flag(false, SYNCED),
   allowJavaScriptFromAppleEvents: flag(false),
   cliControl: flag(false),
-  compactCliPill: flag(false, SYNCED),
+  showCliPill: flag(true, SYNCED), compactCliPill: flag(false, SYNCED),
   showBookmarks: flag(true, SYNCED),
   bookmarksBar: oneOf(["always", "newTab", "never"], "never", SYNCED),
   bookmarksImportDismissed: flag(false),
@@ -150,6 +154,7 @@ export const SETTING_SPECS = {
   borderlessMode: flag(false, SYNCED),
   tabCornerRadius: shaped<number | null>(null, validTabCorners, { type: ["integer", "null"], minimum: TAB_CORNERS.min, maximum: TAB_CORNERS.max }, SYNCED),
   minimalismMode: flag(false, SYNCED),
+  minimalismPinnedIcons: oneOf(["letters", "logos"], "letters", SYNCED),
   pageFrameZeroInFullScreen: flag(false, SYNCED),
   pageFrameZeroWhenTabsHidden: flag(false, SYNCED),
   commandBarPlacement: oneOf(["field", "centred", "centredOnClick"], "field", SYNCED),
@@ -188,7 +193,7 @@ export const SETTING_KEYS = Object.keys(SETTING_SPECS) as SettingKey[];
 
 export type Settings = { -readonly [K in SettingKey]: Specs[K]["default"] };
 export type SettingsMeta = { chosen: string[]; inferred: string[] };
-export const NO_SETTINGS_META: SettingsMeta = { chosen: [], inferred: [] };
+const NO_SETTINGS_META: SettingsMeta = { chosen: [], inferred: [] };
 
 export type BatterySaverWhen = Settings["batterySaverWhen"];
 export type PeekModifier = Settings["peekModifier"];
@@ -198,7 +203,7 @@ export type SplitLinkModifier = Settings["splitLinkModifier"];
 export const splitLinkModifierOf = (settings: Pick<Settings, "peekModifier" | "splitLinkModifier">): SplitLinkModifier =>
   settings.splitLinkModifier === "alt" && settings.peekModifier === "alt" ? "altShift" : settings.splitLinkModifier;
 
-export function withLinkKeysApart(settings: Settings, patch: Partial<Settings>): Partial<Settings> {
+function withLinkKeysApart(settings: Settings, patch: Partial<Settings>): Partial<Settings> {
   if ((patch.peekModifier ?? settings.peekModifier) !== "alt" || (patch.splitLinkModifier ?? settings.splitLinkModifier) !== "alt") return patch;
   return "splitLinkModifier" in patch && !("peekModifier" in patch) ? { ...patch, peekModifier: "shift" } : { ...patch, splitLinkModifier: "altShift" };
 }
@@ -283,8 +288,7 @@ function settledPatch(settings: Settings, raw: Partial<Settings>): Partial<Setti
 export function choose(s: Pick<BrowserState, "settings" | "settingsMeta">, patch: Partial<Settings>, { inferring = false } = {}): Pick<BrowserState, "settings" | "settingsMeta"> {
   const { chosen, inferred } = s.settingsMeta;
   patch = settledPatch(s.settings, patch);
-  if (patch.autoHideTabs !== undefined && patch.autoHideTabs !== s.settings.autoHideTabs) noteAutoHideTabsChosen();
-  if (patch.minimalismMode !== undefined && patch.minimalismMode !== s.settings.minimalismMode) noteMinimalismToggled(patch.minimalismMode);
+  noteSettingChoices(s.settings, patch, inferring);
   const next = { ...s.settings, ...patch };
   const added = Object.keys(patch).filter((k) => !chosen.includes(k));
   const left = inferring ? [...new Set([...inferred, ...Object.keys(patch)])] : inferred.filter((k) => !(k in patch));

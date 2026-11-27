@@ -1,22 +1,11 @@
 # Personal app isolation and local signing
 
-- Status: active; migrated-profile behavior manually validated. Lifecycle failure paths use disposable-profile tests.
-- Source: [fork PR #5](https://github.com/simon-ami/ardia/pull/5),
-  [PR #6](https://github.com/simon-ami/ardia/pull/6).
-- Behavior: deliver a standalone Release at `~/Applications/Ardia Personal.app`, bundle ID
-  `dev.simon.ardia.personal`, with separate profile/configuration and `ardia-personal` runtime/credential service.
-  Keep the official app and CLI unchanged. Disable the upstream updater/CLI installer.
-  Skill commands, references, and tool permissions use `ardia-personal`; preserve this during merges and refreshes.
-- Reuse the existing personal signing identity. Permit shared `Ardia Safe Storage` only after validating the personal
-  signature and sealed files. Keep mock storage for scratch/ad hoc builds and real-profile debugging restrictions.
-- Register HTTP/HTTPS without changing the chosen default. Reject stale builds; activate paired app/CLI versions.
-  Snapshot the stopped personal profile/preferences first. Failed backup blocks installation; failed activation
-  restores the previous app/CLI. Share userscript sources, not installed copies or live Chromium folders.
-- Code/checks: `scripts/personal/` (path/lifecycle/signing tests), `ArdiaPersonalSigning.h`, `ArdiaLaunchConfig.mm`,
-  `ArdiaHost+Launch.mm`, `CliInstaller.swift`, and CLI `browse/vault.py`.
-- Manual when affected: existing login survives restart; profiles/settings, Bitwarden, scripts, and CLI routing work.
-- Details only when needed: [setup, snapshots, and recovery](../personal-app.md).
-
-- Replacement: `v0.2.47-nightly.9` moves the official CLI to a plugin with shared PATH links.
-  The personal bundle refuses plugin program links and offers its own control toggle in Advanced.
-  Prepare the pinned upstream CLI with personal profile, Keychain, state, helper paths, and skill commands.
+- Status: active; the user accepted the installed profile and login checks. Optional CLI doorbell, control pill, program approvals, and icon variants remain unconfirmed. Lifecycle failure paths use disposable-profile tests.
+- Source: [fork PR #5](https://github.com/simon-ami/ardia/pull/5), [PR #6](https://github.com/simon-ami/ardia/pull/6).
+- Behavior: deliver Release `~/Applications/Ardia Personal.app` (`dev.simon.ardia.personal`) with isolated profile/config and `ardia-personal` runtime/Keychain. Keep official app, its painted/flat icons, and CLI unchanged; disable upstream updater and plugin CLI installer. Skill examples and permissions use `ardia-personal`.
+- Reuse the personal signing identity; allow shared `Ardia Safe Storage` only after signature/seal validation. Keep mock storage for ad hoc builds. Register HTTP/HTTPS without changing default; reject stale builds; snapshot profile/preferences before installing paired app and CLI `0.7.0`; restore on failure. Share userscript sources only.
+- Keep `apps/cli/` intact (`scripts/personal/paths.test.mjs`) with its 25 `bare-sleep` entries in `conventions-baseline.json`, and keep `TabWebView.tsx` <= 400 lines outside baseline.
+- Code/checks: `scripts/personal/{paths,lifecycle,engine}.test.mjs`, `ArdiaPersonalSigning.h`, `ArdiaLaunchConfig.mm`, `ArdiaHost+Launch.mm`, `CliInstaller.swift`, `apps/browser/src/components/settings/panes/{Advanced,AllowedPrograms}.tsx`, `state/app/programControlSetting.ts`, `conventions-baseline.json`, CLI `browse/vault.py`.
+- Manual when affected: existing login survives; Bitwarden, scripts, painted/flat icons, `showCliPill`, one-time `ardia-personal` doorbell (`Always`), `AllowedProgramsRows`, and CLI `0.7.0` routing work.
+- Details: [setup, snapshots, and recovery](../personal-app.md).
+- Replacement: `v0.2.49` uses plugin CLI, `showCliPill`/`compactCliPill`, and doorbell approvals (`AllowedProgramsRows`). Personal build blocks plugin program links, keeps its control toggle with `showCliPill` and `AllowedProgramsRows` in Advanced, prompts once for `ardia-personal`, and patches CLI `0.7.0`.

@@ -1,25 +1,27 @@
 import { visible } from "../scope.ts";
 import type { ScopeState } from "../scopeState.ts";
 import { fromLegacy } from "./legacy.ts";
+import { folderChildren } from "../folders.ts";
 import { lastVisitOf, type BookmarkValue, type DeviceTabs, type DeviceValue, type HistoryValue } from "./adapters.ts";
 import { themeOf, type ViewTheme } from "./theme.ts";
 
-export type { ViewTheme, ViewThemeLook, ViewThemeStop, ViewThemeTexture } from "./theme.ts";
+export type { ViewTheme } from "./theme.ts";
 
 export const MAX_HISTORY_ITEMS = 2_000;
+const MAX_BOOKMARK_DEPTH = 100;
 
 type Kind = "mac" | "phone";
 type ProfileRecord = { n?: unknown; c?: unknown; i?: unknown; d?: unknown; th?: unknown };
 
-export type ViewDevice = { id: string; name: string; kind: Kind; lastSeen: number | null; isCurrent: boolean; canReceiveTabs: boolean };
-export type ViewDeviceTabs = { deviceId: string; deviceName: string; kind: Kind; tabs: { url: string; title: string }[] };
-export type ViewPinnedTab = { key: string; title: string; url: string; icon: string | null };
-export type ViewPinnedTile = ViewPinnedTab & { folder: ViewPinnedTab[] | null };
-export type ViewPinnedSection = { tab: ViewPinnedTab } | { group: ViewPinnedGroup };
-export type ViewPinnedGroup = { key: string; name: string; icon: string | null; color: string | null; items: ViewPinnedSection[] };
+type ViewDevice = { id: string; name: string; kind: Kind; lastSeen: number | null; isCurrent: boolean; canReceiveTabs: boolean };
+type ViewDeviceTabs = { deviceId: string; deviceName: string; kind: Kind; tabs: { url: string; title: string }[] };
+type ViewPinnedTab = { key: string; title: string; url: string; icon: string | null };
+type ViewPinnedTile = ViewPinnedTab & { folder: ViewPinnedTab[] | null };
+type ViewPinnedSection = { tab: ViewPinnedTab } | { group: ViewPinnedGroup };
+type ViewPinnedGroup = { key: string; name: string; icon: string | null; color: string | null; items: ViewPinnedSection[] };
 export type ViewBookmark = { key: string; title: string; url: string | null; added: number; root: "bar" | "other" | null; children: ViewBookmark[] | null };
-export type ViewHistory = { url: string; title: string; visits: number; lastVisit: number };
-export type ViewProfile = {
+type ViewHistory = { url: string; title: string; visits: number; lastVisit: number };
+type ViewProfile = {
   syncId: string;
   name: string;
   color: string | null;
@@ -32,8 +34,8 @@ export type ViewProfile = {
   bookmarks: ViewBookmark[];
   history: ViewHistory[];
 };
-export type ViewSearch = { engineId: string; customURL: string | null; customEngines: { id: string; name: string; keyword: string; url: string }[] };
-export type ViewLook = { interfaceStyle: "glass" | "classic" | null; appearance: "auto" | "light" | "dark" | null };
+type ViewSearch = { engineId: string; customURL: string | null; customEngines: { id: string; name: string; keyword: string; url: string }[] };
+type ViewLook = { interfaceStyle: "glass" | "classic" | null; appearance: "auto" | "light" | "dark" | null };
 export type View = { devices: ViewDevice[]; profiles: ViewProfile[]; search: ViewSearch | null; look: ViewLook | null };
 
 const str = (v: unknown, fallback = "") => (typeof v === "string" ? v : fallback);
@@ -234,25 +236,14 @@ export function bookmarkTree(scope: ScopeState | undefined): ViewBookmark[] {
   const values = new Map<string, BookmarkValue>();
   for (const [k, v] of visible(scope, "bm:")) {
     const b = v as BookmarkValue;
-    if (b && typeof b === "object" && (b.k === "u" || b.k === "f")) values.set(k.slice(3), fromLegacy(b));
+    if (k !== "bm:bar" && k !== "bm:other" && b && typeof b === "object" && (b.k === "u" || b.k === "f")) values.set(k.slice(3), fromLegacy(b));
   }
   const parentOf = new Map<string, string>();
   for (const [key, v] of values) {
     const p = typeof v.p === "string" ? v.p : "other";
     parentOf.set(key, p === "bar" || p === "other" ? p : values.get(p)?.k === "f" ? p : "other");
   }
-  for (const key of [...values.keys()].sort()) {
-    const seen = new Set([key]);
-    for (let at = parentOf.get(key)!; parentOf.has(at); at = parentOf.get(at)!) {
-      if (seen.has(at)) {
-        parentOf.set(key, "other");
-        break;
-      }
-      seen.add(at);
-    }
-  }
-  const children = new Map<string, string[]>();
-  for (const key of values.keys()) children.set(parentOf.get(key)!, [...(children.get(parentOf.get(key)!) ?? []), key]);
+  const children = folderChildren(parentOf, [...values.keys()].sort(), "other");
   const sorted = (parent: string) =>
     (children.get(parent) ?? []).map((key) => ({ key, pos: str(values.get(key)!.pos) })).sort(byPosThenKey).map((x) => x.key);
   const node = (key: string, root: "bar" | "other" | null): ViewBookmark => {
@@ -264,10 +255,21 @@ export function bookmarkTree(scope: ScopeState | undefined): ViewBookmark[] {
       url: folder ? null : str(v.u),
       added: typeof v.a === "number" && Number.isFinite(v.a) ? v.a : 0,
       root,
-      children: folder ? sorted(key).map((k) => node(k, null)) : null,
+      children: folder ? [] : null,
     };
   };
-  return [...sorted("bar").map((k) => node(k, "bar")), ...sorted("other").map((k) => node(k, "other"))];
+  const tree = [...sorted("bar").map((k) => node(k, "bar")), ...sorted("other").map((k) => node(k, "other"))];
+  const folders = tree.map((folder) => ({ folder, depth: 1 }));
+  while (folders.length) {
+    const { folder, depth } = folders.pop()!;
+    if (!folder.children || depth >= MAX_BOOKMARK_DEPTH) continue;
+    for (const k of sorted(folder.key)) {
+      const child = node(k, null);
+      folder.children.push(child);
+      folders.push({ folder: child, depth: depth + 1 });
+    }
+  }
+  return tree;
 }
 
 export function historyList(scope: ScopeState | undefined): ViewHistory[] {

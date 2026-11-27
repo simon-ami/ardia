@@ -1,44 +1,68 @@
 import { copy } from "../../lib/platformCopy";
-import { mobileClean } from "@ardia/core/src/mobile";
+import { actionWords } from "../../lib/sharedWords";
+import { iconRoleSymbols as iconRoles } from "../../lib/iconRoles";
 import { hostOf } from "@ardia/core/src/omnibox";
-import { copyText, pressHaptic, shareLink, successHaptic } from "../../platform/system";
+import { cleanLinkTitle, cleanUrl } from "@ardia/core/src/cleanUrl.ts";
+import { copyLink as copyCleanLink, copyText, pressHaptic, shareLink, successHaptic } from "../../platform/system";
+import { linkToCopy } from "../page/linkCopy";
 import { settled } from "../pages/store";
 import type { TrayRow } from "../search/omnibox";
+import { canForgetSearch, forgetSearch } from "../search/store";
 import { closeTabById, currentTabs, deleteArchivedTabsById, setIncognito, useTabs } from "../tabs/store";
 import { isSyncableUrl, type BrowserTab } from "../tabs/tabModels";
 import { recentOtherTabs, tabMenuTitle } from "../tabs/tabsState";
 import { showToast } from "../toasts/store";
 import { openPage, openTab, reopenArchived } from "./store";
 
-export type RowAction = { label: string; icon: "eyes" | "squareOnSquare" | "link" | "squareAndArrowUp" | "docOnDoc"; run: () => void };
+export type RowConfirmation = { title: string; message: string; action: string };
+
+export type RowAction = {
+  label: string;
+  icon: "eyes" | "squareOnSquare" | "trash" | typeof iconRoles.copyLink | typeof iconRoles.share | typeof iconRoles.copyText;
+  run: () => void;
+  destructive?: boolean;
+  confirm?: RowConfirmation;
+};
+
+export const FORGET_SEARCH = "Delete";
+
+export function forgetSearchConfirmation(query: string): RowConfirmation {
+  return { title: "Delete This Search?", message: `“${query.trim()}” will be removed from ${copy().forgottenSearchLeaves}.`, action: FORGET_SEARCH };
+}
 
 function openSwitchingMode(url: string, origin: "search" | "typed") {
-  setIncognito(!useTabs.getState().incognito);
+  if (!setIncognito(!useTabs.getState().incognito)) return;
   openPage(url, origin);
+}
+
+export function trayRowHoldAction(row: TrayRow): RowAction | null {
+  if (row.kind !== "query" || !canForgetSearch(row.query)) return null;
+  return { label: FORGET_SEARCH, icon: "trash", destructive: true, confirm: forgetSearchConfirmation(row.query), run: () => forgetSearch(row.query) };
 }
 
 export function trayRowActions(row: TrayRow): RowAction[] {
   const incognito = useTabs.getState().incognito;
   const icon = incognito ? "squareOnSquare" : "eyes";
   if (row.kind === "query") {
-    return [{ label: incognito ? "Search in New Tab" : "Search in Incognito Tab", icon, run: () => openSwitchingMode(row.url, "search") }];
+    const search: RowAction = { label: incognito ? "Search in New Tab" : "Search in Incognito Tab", icon, run: () => openSwitchingMode(row.url, "search") };
+    const forget = trayRowHoldAction(row);
+    return forget ? [search, forget] : [search];
   }
-  if (row.kind === "calc") return [{ label: "Copy", icon: "docOnDoc", run: () => quietly(() => copyText(row.value)) }];
+  if (row.kind === "calc") return [{ label: actionWords.copyText, icon: iconRoles.copyText, run: () => quietly(() => copyText(row.value)) }];
   if (row.kind === "paste" || row.kind === "browseForMe") return [];
   return [
     { label: incognito ? "Open in New Tab" : "Open in Incognito Tab", icon, run: () => openSwitchingMode(row.url, "typed") },
-    { label: "Copy Link", icon: "link", run: () => copyLink(row.url) },
-    { label: "Share", icon: "squareAndArrowUp", run: () => quietly(() => shareLink(row.url, row.title)) },
+    { label: actionWords.copyLink, icon: iconRoles.copyLink, run: () => copyLink(row.url) },
+    { label: actionWords.share, icon: iconRoles.share, run: () => quietly(() => shareLink(cleanUrl(row.url), cleanLinkTitle(row.title, row.url))) },
   ];
 }
 
 export function copyLink(url: string) {
-  quietly(() => copyText(mobileClean(url)));
+  const link = linkToCopy(url);
+  quietly(() => copyCleanLink(link.text));
   quietly(successHaptic);
-  showToast(COPIED_LINK, "link");
+  showToast(link.acknowledgement, iconRoles.copyLink);
 }
-
-export const COPIED_LINK = "Copied URL Without Trackers";
 
 const quietly = (call: () => Promise<unknown>) => void settled(call, undefined);
 
@@ -52,7 +76,7 @@ export function copyTabLink(tab: BrowserTab) {
 
 export function shareTab(tab: BrowserTab) {
   if (!canShareTab(tab)) return;
-  quietly(() => shareLink(tab.url, tab.title));
+  quietly(() => shareLink(cleanUrl(tab.url), cleanLinkTitle(tab.title, tab.url)));
 }
 
 export const menuOpenedHaptic = () => quietly(pressHaptic);
@@ -70,4 +94,6 @@ export const openArchivedTab = (tab: BrowserTab) => reopenArchived(tab);
 
 export const deleteArchivedTab = (tab: BrowserTab) => deleteArchivedTabsById([tab.id]);
 
-export const shareUrl = (url: string, title: string) => quietly(() => shareLink(url, title));
+export const deleteArchivedTabs = (tabs: readonly BrowserTab[]) => deleteArchivedTabsById(tabs.map((tab) => tab.id));
+
+export const shareUrl = (url: string, title: string) => quietly(() => shareLink(cleanUrl(url), cleanLinkTitle(title, url)));

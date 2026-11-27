@@ -22,13 +22,13 @@ const textOfNode = (node: Root["root"]) => textOf({ root: node } as Root);
 
 const hostWithTestId = (root: Root, testID: string) => root.root.findAll((node) => node.props.testID === testID && typeof node.type === "string")[0]!;
 
-test("the welcome step shows the 104-point app icon, fixed at any text size, in a white frame 5 points wide with the frame's corner and the native apps' shadow", () => {
+test("the welcome step shows the 104-point app icon, fixed at any text size, in a frame of the icon's own cream 5 points wide with the frame's corner and the native apps' shadow", () => {
   showOnboarding();
   const root = renderSurface(<OnboardingView />);
   const frame = hostWithTestId(root, "welcomeIcon");
   const framed = StyleSheet.flatten(frame.props.style);
   expect(framed.padding).toBe(5);
-  expect(framed.backgroundColor).toBe("#FFFFFF");
+  expect(framed.backgroundColor).toBe("#F8F3E1");
   expect(framed.borderRadius).toBeCloseTo(104 * 0.225 + 5);
   expect(framed.boxShadow).toBe("0px 12px 48px rgba(0, 0, 0, 0.18)");
   const icon = frame.findAll((node) => node.type === AppIcon)[0]!;
@@ -47,7 +47,7 @@ test("the default browser step's art ends at the 60-point app icon with its shad
   expect(icon.props).toMatchObject({ side: 60, shadow: true, scalesWithText: false });
   const drawn = StyleSheet.flatten(hostWithTestId(root, "appIcon").props.style);
   expect(drawn.width).toBe(60);
-  expect(drawn.boxShadow).toBe("0px 4px 20px rgba(0, 0, 0, 0.12)");
+  expect(drawn.boxShadow).toBe("0px 4px 20px rgba(0,0,0,0.12)");
   unmount(root);
 });
 

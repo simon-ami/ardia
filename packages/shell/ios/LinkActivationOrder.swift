@@ -19,6 +19,7 @@ final class LinkActivationOrder: NSObject {
     case stageManager = "stageManager"
     case windowManager = "windowManager"
     case keyRestored = "keyRestored"
+    case raiseSkipped = "raiseSkipped"
   }
 
   private static let pairing: TimeInterval = 3
@@ -79,11 +80,13 @@ final class LinkActivationOrder: NSObject {
     activatedAt = nil
     keptEarly = false
     holdPending = !littleLinkExpected && activationMayCarryLink && !stageManagerOrdersWindows && !windowManagerActivated(onScreen)
-    if littleLinkExpected || holdPending { hideBeforeRaise() }
+    ActivationRaise.allow()
+    if littleLinkExpected || holdPending { keepFromRaising() }
   }
 
   @objc private func didBecomeActive(_ notification: Notification) {
     activatedAt = Date()
+    if ActivationRaise.allow() { Self.report(.raiseSkipped) }
     if littleLinkExpected {
       littleLinkAt = nil
       keepEarly(.atActivation)
@@ -97,6 +100,7 @@ final class LinkActivationOrder: NSObject {
   }
 
   @objc private func didResignActive(_ notification: Notification) {
+    ActivationRaise.allow()
     release(raising: false)
   }
 
@@ -131,19 +135,27 @@ final class LinkActivationOrder: NSObject {
     return true
   }
 
-  private static func leftToWindowManager(_ onScreen: [[String: Any]]) -> Bool {
-    let list = onScreen.compactMap { entry -> LinkActivationHold.Listed? in
+  private static func listed(_ onScreen: [[String: Any]]) -> [LinkActivationHold.Listed] {
+    onScreen.compactMap { entry -> LinkActivationHold.Listed? in
       guard let number = (entry[kCGWindowNumber as String] as? NSNumber)?.intValue,
             let owner = (entry[kCGWindowOwnerPID as String] as? NSNumber)?.int32Value,
-            let layer = (entry[kCGWindowLayer as String] as? NSNumber)?.intValue,
-            let bounds = (entry[kCGWindowBounds as String] as? NSDictionary).flatMap({ CGRect(dictionaryRepresentation: $0) })
+            let layer = (entry[kCGWindowLayer as String] as? NSNumber)?.intValue
       else { return nil }
       let windowServer = entry[kCGWindowOwnerName as String] as? String == "Window Server"
-      return LinkActivationHold.Listed(number: number, owner: owner, layer: layer, bounds: bounds, windowServer: windowServer)
+      return LinkActivationHold.Listed(number: number, owner: owner, layer: layer, windowServer: windowServer)
     }
+  }
+
+  private static func leftToWindowManager(_ onScreen: [[String: Any]]) -> Bool {
+    let list = listed(onScreen)
     let managers = Set(windowManagerBundles.flatMap { NSRunningApplication.runningApplications(withBundleIdentifier: $0) }.map(\.processIdentifier))
+    let pointer = NSEvent.mouseLocation
     return LinkActivationHold.leftToWindowManager(
-      pointer: CGEvent(source: nil)?.location, own: ProcessInfo.processInfo.processIdentifier, windowManagers: managers, frontToBack: list)
+      own: ProcessInfo.processInfo.processIdentifier, windowManagers: managers, frontToBack: list,
+      refresh: { Self.listed(Self.onScreenWindows()) }
+    ) {
+      NSWindow.windowNumber(at: pointer, belowWindowWithWindowNumber: $0)
+    }
   }
 
   private var littleLinkExpected: Bool {
@@ -193,6 +205,17 @@ final class LinkActivationOrder: NSObject {
       guard let self, self.activation == scheduledIn else { return }
       if self.raisedGeneration == generation, NSApp.isActive { Self.restore(placements, except: nil) }
       self.showHidden()
+    }
+  }
+
+  private func keepFromRaising() {
+    let windows = placements.compactMap(\.window).filter { $0 !== opened }
+    guard ActivationRaise.block(windows) else { return hideBeforeRaise() }
+    showHidden()
+    let scheduledIn = activation
+    DispatchQueue.main.async { [weak self] in
+      guard self?.activation == scheduledIn else { return }
+      ActivationRaise.allow()
     }
   }
 
@@ -278,5 +301,41 @@ final class LinkActivationOrder: NSObject {
       if let above, let window = NSApp.window(withWindowNumber: number) { result.append(Placement(window: window, below: above)) }
     }
     return result
+  }
+}
+
+private enum ActivationRaise {
+  private typealias WindowForOrdering = @convention(c) (NSWindow, Selector) -> Unmanaged<NSWindow>?
+
+  private static let blocked = NSHashTable<NSWindow>.weakObjects()
+  private static var skipped = false
+
+  private static let installed: Bool = {
+    let selector = NSSelectorFromString("_windowForOrdering")
+    guard let method = class_getInstanceMethod(NSWindow.self, selector),
+          let encoding = method_getTypeEncoding(method), String(cString: encoding) == "@16@0:8"
+    else { return false }
+    let original = unsafeBitCast(method_getImplementation(method), to: WindowForOrdering.self)
+    let replacement: @convention(block) (NSWindow) -> Unmanaged<NSWindow>? = { window in
+      guard Thread.isMainThread, blocked.contains(window) else { return original(window, selector) }
+      skipped = true
+      return nil
+    }
+    method_setImplementation(method, imp_implementationWithBlock(replacement))
+    return true
+  }()
+
+  static func block(_ windows: [NSWindow]) -> Bool {
+    guard installed else { return false }
+    skipped = false
+    windows.forEach(blocked.add)
+    return true
+  }
+
+  @discardableResult
+  static func allow() -> Bool {
+    defer { skipped = false }
+    blocked.removeAllObjects()
+    return skipped
   }
 }

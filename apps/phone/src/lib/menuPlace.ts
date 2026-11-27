@@ -33,7 +33,7 @@ export type MenuAlign = { trailing: boolean; inset: number };
 
 export const MENU_FINGER_GAP = 16;
 
-export function menuOnTrigger(anchor: Rect, host: Rect, room: Rect, width: number, wanted: number, margin: number, keepBelow?: boolean, align?: MenuAlign): MenuSpot {
+export function menuOnTrigger(anchor: Rect, host: Rect, room: Rect, width: number, wanted: number, margin: number, keepBelow?: boolean, align?: MenuAlign, clearAnchor = false): MenuSpot {
   const anchorBottom = anchor.y + anchor.height;
   const roomTop = Math.min(room.y + margin, anchor.y);
   const roomBottom = Math.max(room.y + room.height - margin, anchorBottom);
@@ -43,9 +43,15 @@ export function menuOnTrigger(anchor: Rect, host: Rect, room: Rect, width: numbe
   const trailing = align ? align.trailing : anchor.x + anchor.width / 2 > room.x + room.width / 2;
   const inset = align ? align.inset : 0;
   const x = clamp(trailing ? anchor.x + anchor.width - inset - width : anchor.x + inset, roomLeft, roomRight - width);
-  const below = keepBelow ?? (anchor.y + height <= roomBottom || anchorBottom - height < roomTop);
-  const y = clamp(below ? anchor.y : anchorBottom - height, roomTop, roomBottom - height);
-  return { left: x - host.x, top: y - host.y, height, origin: `${trailing ? "right" : "left"} ${below ? "top" : "bottom"}` };
+  const belowTop = clearAnchor ? anchorBottom : anchor.y;
+  const aboveBottom = clearAnchor ? anchor.y : anchorBottom;
+  const spaceBelow = roomBottom - belowTop;
+  const spaceAbove = aboveBottom - roomTop;
+  const fitsNeither = height > spaceBelow && height > spaceAbove;
+  const below = keepBelow ?? (clearAnchor && fitsNeither ? spaceBelow >= spaceAbove : height <= spaceBelow || height > spaceAbove);
+  const fitted = clearAnchor ? Math.min(height, below ? spaceBelow : spaceAbove) : height;
+  const y = clamp(below ? belowTop : aboveBottom - fitted, roomTop, roomBottom - fitted);
+  return { left: x - host.x, top: y - host.y, height: fitted, origin: `${trailing ? "right" : "left"} ${below ? "top" : "bottom"}` };
 }
 
 export const MENU_SMALL_CONTROL = 64;
@@ -67,6 +73,17 @@ export function menuAt(point: Point, host: Rect, room: Rect, width: number, want
 
 export function menuShrink(anchor: Rect, width: number, height: number): { x: number; y: number } {
   return { x: Math.min(1, anchor.width / width), y: Math.min(1, anchor.height / height) };
+}
+
+export function roomAbove(room: Rect, floor: number | null | undefined): Rect {
+  if (floor === null || floor === undefined) return room;
+  return { ...room, height: Math.max(0, Math.min(room.y + room.height, floor) - room.y) };
+}
+
+export function keepAbove(spot: MenuSpot, limit: number | null, top: number): MenuSpot {
+  if (limit === null) return spot;
+  const height = Math.max(0, Math.min(spot.height, limit - top));
+  return { ...spot, height, top: Math.max(top, Math.min(spot.top, limit - height)) };
 }
 
 export function insetRect(rect: Rect, inset: { top: number; bottom: number; left: number; right: number }): Rect {

@@ -83,8 +83,10 @@ function windowWith(...urls) {
 
 const sleep = (...ids) => useLifecycle.setState({ discarded: Object.fromEntries(ids.map((id) => [id, true])) });
 
-test("the tab switcher lists sleeping tabs by default, as Dia does", () => {
+test("the tab switcher lists sleeping tabs by default, as Dia does, while still leaving out closed pinned tabs", () => {
   const [w, now, a, b, c, d] = windowWith("a", "b", "c", "d");
+  const closedPin = S().newTab(w, { url: "https://closed-pin.com/", background: true, pinned: true });
+  S().updateTab(closedPin, { page: { kind: "asleep" }, lastActiveAt: now - 1000 });
   sleep(c);
   assert.deepEqual(recentTabIds(S(), w, now), [a, b, c, d]);
 });

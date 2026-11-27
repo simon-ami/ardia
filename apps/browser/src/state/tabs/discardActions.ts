@@ -11,7 +11,7 @@ export function leaveDiscardedTabs(ids: readonly string[]) {
   for (const w of Object.values(s.windows)) {
     const active = activeTabId(s, w.id);
     if (!active || !excluded.has(active)) continue;
-    const replacement = lastAwakeTab(s, w.id, w.profileId, excluded);
+    const replacement = lastAwakeTab(s, w.id, w.profileId, excluded, undefined, active);
     if (replacement) useBrowser.getState().activate(replacement);
     else useBrowser.getState().newTab(w.id);
   }

@@ -9,15 +9,17 @@ import { pagePath } from "../data/site";
   kicker="Privacy"
   heading="Your stuff stays yours."
   description="What Ardia and ardia.dev collect, what they don't, and what you can do about it."
-  lede="Ardia has no accounts, no ads and nothing to sell. Here's what we see, what we never see, and who else might."
+  updated={LEGAL.privacyUpdated}
+  lede="Ardia has no accounts and no ads. Here’s what we collect, what stays on your device, and what goes to third parties."
 >
   <h2>The short version</h2>
   <ul>
-    <li>Your browsing (history, tabs, passwords, bookmarks, cookies) lives on your Mac and your phone. We never receive it.</li>
+    <li>Your browsing (history, tabs, passwords, bookmarks, cookies) lives on your computer and your phone. We never receive it.</li>
     <li>Crash reports and usage stats are <strong>off unless you turn them on</strong>, and never include the sites you visit, what you type or what you search.</li>
     <li>The app sends one anonymous “opened today” count a day, and checks for updates.</li>
+    <li>The phone apps' AI runs on the phone unless you connect your own ChatGPT plan. Then what you ask goes from your phone straight to OpenAI, never to us.</li>
     <li>This website counts its visitors on our own servers. No ad networks, no data brokers.</li>
-    <li>We don't sell, rent or trade personal information. To anyone. Ever.</li>
+    <li>We never sell, rent or trade personal information.</li>
   </ul>
 
   <h2>Who we are</h2>
@@ -27,7 +29,7 @@ import { pagePath } from "../data/site";
   </p>
 
   <h2>The Ardia app</h2>
-  <h3>What stays on your Mac</h3>
+  <h3>What stays on your computer</h3>
   <p>
     Everything you do in the browser: the sites you visit, your history, tabs, bookmarks, saved passwords, addresses, cards,
     cookies, downloads and settings. We don't operate any server that receives it, and there's no Ardia account to tie it to.
@@ -42,13 +44,15 @@ import { pagePath } from "../data/site";
   <p>
     Off unless you turn them on, in setup or later in Settings. When on, Ardia sends us crash and error reports, rough counts
     of which features get used, and how fast things are, tagged with a random ID created on your Mac. It never sends the
-    sites you visit, anything you type or search, or what's in your tabs. Settings › Privacy & Security › What's Sent lists
+    sites you visit, anything you type or search, or what's in your tabs. Settings › General › Crash reports › Details lists
     every item. Turn it off any time and sending stops at once.
   </p>
   <h3>The daily count and updates</h3>
   <p>
-    Whatever you choose above, Ardia sends one anonymous “opened today” count a day with its version and your macOS version,
-    and checks ardia.dev for updates. These have no lasting ID and nothing about you. We use them to know roughly how many
+    Whatever you choose above, Ardia sends one anonymous “opened today” count a day with its version, update channel, your
+    macOS version and chip, and whether it's this copy's first day, week or month, and checks ardia.dev for updates. While
+    update checks are on, each launch also reads one small file from ardia.dev, the same for everyone, so we can turn off a
+    speed-up that misbehaves. These have no lasting ID and nothing about you. We use them to know roughly how many
     people use Ardia and which versions are still out there.
   </p>
 
@@ -62,6 +66,32 @@ import { pagePath } from "../data/site";
     reports and the feedback you choose to send, under its own policy, and shares them with us. The Android app is a signed
     APK from our GitHub releases, so no app store sees it.
   </p>
+
+  <h3>AI on your phone</h3>
+  <p>
+    Pinch to Summarize is off until you turn it on. It reads the page you're on and summarizes it on the phone, with Apple
+    Intelligence on iPhone and Gemini Nano on Android. An iPhone without Apple Intelligence shows key lines from the page
+    instead. On Android you can pick your ChatGPT plan in Settings › Experimental › Pinch to Summarize. Then the text of
+    each page you summarize, Incognito pages included, goes from your phone to OpenAI.
+  </p>
+  <p>
+    Browse for Me sends your search to DuckDuckGo, reads the top five pages without your cookies or logins, and writes the
+    answer on the phone. The phone's own model writes it. A phone without one quotes the most relevant lines from those
+    pages, with their sources. If you choose Continue with ChatGPT, which needs a ChatGPT Plus or Pro plan, your
+    search and the text of the pages it read go straight from your phone to OpenAI on your plan and count toward your
+    ChatGPT limits. Disconnect ChatGPT in Settings › Experimental › Browse for Me stops it.
+  </p>
+  <p>
+    Talk to Me reads Browse for Me's answers aloud on iPhone. Its voice runs on the phone and sends nothing anywhere.
+    Turning it on downloads the voice once from GitHub.
+  </p>
+  <p>
+    Nothing goes to OpenAI until you connect ChatGPT. Your searches, the pages and the answers never pass through our
+    servers, and we never see them. OpenAI handles them under its <a class="link" href="https://openai.com/policies/privacy-policy/">privacy policy</a>.
+    Apple Intelligence and Gemini Nano run on the phone. Ardia reaches Gemini Nano through Google's ML Kit, which reports anonymous API usage to
+    Google.
+  </p>
+  <p>Ardia on your computer has no AI built in. AI there comes only as a plugin, off until you turn it on.</p>
 
   <h2>The website</h2>
   <p>
@@ -81,7 +111,10 @@ import { pagePath } from "../data/site";
   <ul>
     <li><strong>Websites you visit</strong> see what any website sees when you visit it.</li>
     <li><strong>Your search engine</strong> gets your searches, and what you type into the address bar if search suggestions are on.</li>
+    <li><strong>DuckDuckGo</strong> gets what you search with Browse for Me on your phone.</li>
+    <li><strong>OpenAI</strong> gets your Browse for Me searches and the text of the pages they read, and on Android the pages you summarize, only after you connect your ChatGPT plan.</li>
     <li><strong>Extensions</strong> you install are made by others and can see whatever you allow them to.</li>
+    <li><strong>Plugins</strong> arrive off and ask first: each one's consent sheet lists what it may do and the websites it may reach. Installing an official plugin downloads it from GitHub.</li>
     <li><strong>Content blocking lists</strong> are updated from the people who publish them.</li>
     <li><strong>GitHub, Discord and the Chrome Web Store</strong>, if you follow a link to them, collect data under their own terms.</li>
   </ul>
@@ -89,7 +122,7 @@ import { pagePath } from "../data/site";
   <h2>How we use what we get</h2>
   <p>
     To fix crashes and bugs, make Ardia faster, decide what to build next, ship updates, keep the Services secure and
-    answer you when you write to us. That's the list. No ads, no profiling, no selling.
+    answer you when you write to us. We don’t use it for ads, profiling or resale.
   </p>
 
   <h2>Who we share it with</h2>
@@ -108,8 +141,9 @@ import { pagePath } from "../data/site";
 
   <h2>Your choices and rights</h2>
   <ul>
-    <li>Turn crash reports and usage stats off in Settings › Privacy & Security.</li>
-    <li>Turn off update checks in Settings.</li>
+    <li>Turn crash reports and usage stats off in Settings › General.</li>
+    <li>Turn off update checks in Settings › General › Updates.</li>
+    <li>Disconnect ChatGPT on your phone in Settings › Experimental › Browse for Me.</li>
     <li>Clear this site's data in your browser to drop its visitor ID.</li>
     <li>Delete everything Ardia stored on your Mac by deleting the app and its data.</li>
   </ul>
@@ -146,5 +180,5 @@ import { pagePath } from "../data/site";
   </p>
 
   <h2>Contact</h2>
-  <p>{LEGAL.operator} · {LEGAL.contact}</p>
+  <p class="bits"><span>{LEGAL.operator}</span><span>{LEGAL.contact}</span></p>
 </Legal>

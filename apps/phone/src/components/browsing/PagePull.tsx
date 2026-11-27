@@ -1,12 +1,16 @@
-import type { ReactNode } from "react";
+import { useMemo, type ReactNode } from "react";
 import { Platform, StyleSheet, type StyleProp, type ViewStyle } from "react-native";
+import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import Animated, { runOnJS, useAnimatedReaction, useAnimatedStyle, useDerivedValue } from "react-native-reanimated";
 import { DECK, DECK_REDESIGN } from "../../lib/deckGeometry";
 import { pullBarGhosts, pullBarGlyphs, pullBarShift, pullClearsBar, pullPagePose, pullRise } from "../../lib/deckPull";
-import { deckPull, PULL_STAGE, pullFades, setDeckOwnsBar } from "../../state/browse/deckPull";
+import { deckPull, hurryDeckPull, PULL_STAGE, pullFades, reportDeckOwnsBar } from "../../state/browse/deckPull";
+import { deckLive } from "../../state/browse/deckTurn";
+import { deckPullSettled, noteDeckTapWhileLanding } from "../../state/browse/store";
 import { tabsInk, usesGlass, useTheme } from "../ui";
 
 const PULL_OFFSTAGE = 100_000;
+const OTHER_PAGE_POSE = { dx: 0, dy: 0, scale: 1, corner: 0, shadow: 0, seen: 0 };
 const SHADOW_FULL_AT = 0.3;
 const FADE_RISE = 100_000;
 const PRIMED = 0.99;
@@ -29,13 +33,15 @@ export function PagePull({ tabId, barTop, children }: { tabId: string; barTop: n
       const clears = rise >= 0 && pullClearsBar(rise, barTop, barHanded.value);
       if (clears === barHanded.value) return;
       barHanded.value = clears;
-      runOnJS(setDeckOwnsBar)(clears);
+      runOnJS(reportDeckOwnsBar)(clears, deckPull.barTurn.value);
     },
   );
   const pose = useDerivedValue(() => {
     const target = deckPull.target.value;
     const stage = deckPull.stage.value;
-    if (stage === PULL_STAGE.idle || !target || deckPull.id.value !== tabId) return null;
+    if (deckPull.awayId.value === tabId) return OTHER_PAGE_POSE;
+    if (stage !== PULL_STAGE.idle && deckPull.id.value !== tabId) return OTHER_PAGE_POSE;
+    if (stage === PULL_STAGE.idle || !target) return null;
     if (pullFades(stage)) return { dx: 0, dy: 0, scale: 1, corner: 0, shadow: 0, seen: 1 - deckPull.fade.value };
     const shrink = deckPull.shrink.value;
     const page = pullPagePose(target, shrink);
@@ -53,7 +59,7 @@ export function PagePull({ tabId, barTop, children }: { tabId: string; barTop: n
   });
   return (
     <>
-      <Animated.View testID="pagePullShadow" pointerEvents="none" style={[StyleSheet.absoluteFill, styles.shadow, { backgroundColor: theme.surface }, shadow]} />
+      <Animated.View testID="pagePullShadow" pointerEvents="none" style={[StyleSheet.absoluteFill, styles.shadow, { backgroundColor: theme.canvas }, shadow]} />
       <Animated.View testID="pagePull" collapsable={false} style={[StyleSheet.absoluteFill, styles.page, page]}>
         {children}
       </Animated.View>
@@ -61,13 +67,31 @@ export function PagePull({ tabId, barTop, children }: { tabId: string; barTop: n
   );
 }
 
+const LANDING_TAP_MS = 500;
+
 export function PullBlocker() {
+  const landingTap = useMemo(
+    () =>
+      Gesture.Tap()
+        .maxDuration(LANDING_TAP_MS)
+        .withTestId("landingTap")
+        .onEnd((event, success) => {
+          if (!success) return;
+          if (hurryDeckPull(event.absoluteX, event.absoluteY, deckPullSettled)) runOnJS(noteDeckTapWhileLanding)(Date.now());
+        }),
+    [],
+  );
   const style = useAnimatedStyle(() => {
     const stage = deckPull.stage.value;
-    const open = stage === PULL_STAGE.idle || (stage === PULL_STAGE.growing && deckPull.pageLive.value);
+    const deckOwns = deckPull.cut.value && deckLive.value !== 0;
+    const open = deckOwns || stage === PULL_STAGE.idle || (stage === PULL_STAGE.growing && deckPull.pageLive.value);
     return { transform: [{ translateX: open ? PULL_OFFSTAGE : 0 }] };
   });
-  return <Animated.View testID="pagePullBlocker" accessibilityElementsHidden importantForAccessibility="no-hide-descendants" style={[StyleSheet.absoluteFill, style]} />;
+  return (
+    <GestureDetector gesture={landingTap}>
+      <Animated.View testID="pagePullBlocker" accessibilityElementsHidden importantForAccessibility="no-hide-descendants" style={[StyleSheet.absoluteFill, style]} />
+    </GestureDetector>
+  );
 }
 
 type GlyphsProps = { style?: StyleProp<ViewStyle>; children: ReactNode };
@@ -104,7 +128,7 @@ export function PullGhost({ style, children }: GlyphsProps) {
   const fade = useAnimatedStyle(() => {
     const target = deckPull.target.value;
     const stage = deckPull.stage.value;
-    if (stage === PULL_STAGE.idle || !target) return { opacity: 0 };
+    if (stage === PULL_STAGE.idle || !target || deckPull.cut.value) return { opacity: 0 };
     if (pullFades(stage)) return { opacity: deckPull.fade.value };
     if (barStays && pullLanded(stage)) return { opacity: 1 };
     if (stage === PULL_STAGE.growing) return { opacity: deckPull.pageLive.value ? 1 - deckPull.barBack.value : 1 };

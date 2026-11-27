@@ -13,7 +13,9 @@ test("staged engine lookup uses the merge tree and refuses unmatched working fil
     mkdirSync(scripts, { recursive: true });
     mkdirSync(join(root, "engine"));
     copyFileSync(new URL("../../packages/ardiacore/scripts/fetch-engine.sh", import.meta.url), join(scripts, "fetch-engine.sh"));
+    copyFileSync(new URL("../../packages/ardiacore/scripts/engine-match.sh", import.meta.url), join(scripts, "engine-match.sh"));
     copyFileSync(new URL("../../engine/engine-key.sh", import.meta.url), join(root, "engine/engine-key.sh"));
+    copyFileSync(new URL("../../engine/engine-key.py", import.meta.url), join(root, "engine/engine-key.py"));
     for (const name of ["offline-game", "offline-game-pipeline"]) {
       mkdirSync(join(root, "apps/browser/assets", name), { recursive: true });
       writeFileSync(join(root, "apps/browser/assets", name, "source"), "fixture");

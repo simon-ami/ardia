@@ -4,22 +4,22 @@ import { FlatList, Platform, Pressable, RefreshControl, StyleSheet, Text, useWin
 import Animated, { FadeIn, useAnimatedStyle, useSharedValue, withSpring } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import type { PinnedTile, SyncedProfile } from "../../state/sync/store";
-import { SPACES_LARGE_TEXT, Switcher, Tiles, Unavailable } from "./SpacesParts";
+import { pinnedFolderMenu, pinnedLinkMenu, SPACES_LARGE_TEXT, Switcher, Tiles, Unavailable } from "./SpacesParts";
 import { CrossfadeText } from "../settings/SettingsKit";
 import { haptics } from "../../state/app/haptics";
 import { countUsage } from "../../state/telemetry/telemetry";
 import { closeArchive, openArchive } from "../../state/browse/store";
-import { copyLink, menuOpenedHaptic, shareUrl } from "../../state/browse/tabMenus";
+import { menuOpenedHaptic } from "../../state/browse/tabMenus";
 import { openSettings } from "../../state/settings/nav";
 import { openRemote, selectProfile, syncNow } from "../../state/sync/actions";
 import { useSelectedProfile, useSyncStatus, useSyncView } from "../../state/sync/hooks";
-import { remoteTitle, spaceGroupColor, spaceRows, type SpaceRow } from "../../state/sync/spaces";
+import { spaceGroupColor, spaceRows, type SpaceRow } from "../../state/sync/spaces";
 import { showAllDeviceTabs, toggleSpaceRow, useSpaceOpenFor } from "../../state/sync/spaceOpen";
 import { spaceTone } from "../../lib/profileLook";
 import { sfSymbol } from "../../lib/sfSymbols";
 import { syncBanner, type BannerIcon } from "../../state/sync/syncRules";
 import {
-  controlRadius,
+  capsule,
   FadingBackdrop,
   DEFAULT_PROFILE_COLOR,
   Favicon,
@@ -42,8 +42,13 @@ import {
   type MenuItem,
   type SymbolName,
   useReduceMotion,
+  ActionButton,
+  controlSize,
+  slotAround,
+  Tappable,
 } from "../ui";
 import type { Point } from "../../lib/menuPlace";
+import { destinationWords, dismissWords } from "../../lib/sharedWords";
 
 const BANNER_ICONS: Record<BannerIcon, SymbolName> = { folder: "folderFill", lock: "lockFill", reset: "arrowClockwise", warning: "exclamationmarkTriangle", offline: "wifiSlash" };
 const IPHONE_BANNER_ICONS: Record<BannerIcon, SymbolName> = { folder: "folderBadgeQuestionmark", lock: "lockFill", reset: "exclamationmarkArrowTriangle2Circlepath", warning: "exclamationmarkIcloud", offline: "wifiSlash" };
@@ -112,14 +117,14 @@ export function SpacesView() {
       <FadingBackdrop colors={tone} />
       <View style={[styles.column, { paddingTop: frame ? 0 : insets.top }]}>
         {material ? (
-          <MaterialTopBar title={profile?.name ?? "Spaces"} titleTestID="spacesTitle" nav="close" onNav={closeArchive} actions={<MaterialIconAction icon="archivebox" label="Archive" onPress={openArchive} />} />
+          <MaterialTopBar title={profile?.name ?? destinationWords.spaces} titleTestID="spacesTitle" nav="close" onNav={closeArchive} actions={<MaterialIconAction icon="archivebox" label={destinationWords.archive} onPress={openArchive} />} />
         ) : (
           <View style={styles.header}>
-            <View accessibilityRole="header" accessible accessibilityLabel={profile?.name ?? "Spaces"} style={styles.fill}>
-              <CrossfadeText testID="spacesTitle" text={profile?.name ?? "Spaces"} style={[font.title2, styles.bold, { color: theme.label }]} />
+            <View accessibilityRole="header" accessible accessibilityLabel={profile?.name ?? destinationWords.spaces} style={styles.fill}>
+              <CrossfadeText testID="spacesTitle" text={profile?.name ?? destinationWords.spaces} style={[font.title2, styles.bold, { color: theme.label }]} />
             </View>
-            <HeaderButton icon="archivebox" label="Archive" onPress={openArchive} />
-            <HeaderButton icon="xmark" label="Close" onPress={closeArchive} />
+            <HeaderButton icon="archivebox" label={destinationWords.archive} onPress={openArchive} />
+            <HeaderButton icon="xmark" label={dismissWords.close} onPress={closeArchive} />
           </View>
         )}
         {banner ? (
@@ -127,14 +132,12 @@ export function SpacesView() {
             <Symbol name={bannerIcon(banner.icon)} size={18} color={syncInk.banner} />
             <Text style={[font.subheadline, styles.fill, { color: theme.label }]}>{banner.text}</Text>
             {banner.needsAction ? (
-              <Pressable accessibilityRole="button" onPress={() => openSettings({ page: "sync" })} style={[styles.fix, { borderColor: theme.separator }]}>
-                <Text style={[font.subheadline, styles.bold, { color: theme.spaceAccentInk }]}>Fix</Text>
-              </Pressable>
+              <ActionButton title={FIX} variant="outlined" tone="accent" size="compact" onPress={() => openSettings({ page: "sync" })} />
             ) : null}
           </View>
         ) : null}
         {profile ? (
-          <FlatList
+          <FlatList overScrollMode="never"
             ref={pager}
             testID="spacesPager"
             style={styles.fill}
@@ -176,11 +179,11 @@ export function SpacesView() {
 function HeaderButton({ icon, label, onPress }: { icon: SymbolName; label: string; onPress: () => void }) {
   const theme = useTheme();
   return (
-    <Pressable accessibilityRole="button" accessibilityLabel={label} onPress={onPress} style={styles.headerButton}>
+    <Tappable kind="icon" label={label} onPress={onPress} style={styles.headerButton}>
       <View style={[styles.headerCircle, { backgroundColor: theme.tertiaryFill }]}>
         <Symbol name={icon} size={15} color={theme.secondaryLabel} />
       </View>
-    </Pressable>
+    </Tappable>
   );
 }
 
@@ -201,15 +204,9 @@ function SpacePage({ profile, isShown, onMenu, bottom }: { profile: SyncedProfil
     return before ? new Set([...now].filter((key) => !before.has(key))) : new Set<string>();
   }, [rows]);
   const toggle = (key: string) => toggleSpaceRow(profile.syncId, key);
-  const linkMenu = (url: string, title: string, at: Point | null) => {
+  const linkMenu = (url: string, title: string, at: Point | null, pinnedKey: string | null = null) => {
     menuOpenedHaptic();
-    const sharing: MenuItem[] = /^https?:\/\//i.test(url)
-      ? [
-          { label: "Copy Link", icon: "link", onPress: () => copyLink(url) },
-          { label: "Share", icon: "squareAndArrowUp", onPress: () => shareUrl(url, title) },
-        ]
-      : [];
-    onMenu({ items: [{ label: "Open", icon: "arrowUpForward", onPress: () => openRemote(url, title, profile.syncId) }, ...sharing], at });
+    onMenu({ items: pinnedLinkMenu(url, title, profile.syncId, pinnedKey), at });
   };
   return (
     <FlatList
@@ -238,7 +235,7 @@ function SpacePage({ profile, isShown, onMenu, bottom }: { profile: SyncedProfil
             onToggle={toggle}
             onShowAll={(id) => showAllDeviceTabs(profile.syncId, id)}
             onLongPress={linkMenu}
-            onFolder={(tile, anchor) => onMenu({ items: (tile.folder ?? []).map((tab) => ({ label: remoteTitle(tab.title, tab.url), onPress: () => openRemote(tab.url, tab.title, profile.syncId, tab.key) })), at: null, anchor })}
+            onFolder={(tile, anchor) => onMenu({ items: pinnedFolderMenu(tile, profile.syncId), at: null, anchor })}
             tint={theme.secondaryLabel}
           />
         </Appearing>
@@ -253,7 +250,7 @@ type RowProps = {
   tint: string;
   onToggle: (key: string) => void;
   onShowAll: (deviceId: string) => void;
-  onLongPress: (url: string, title: string, at: Point | null) => void;
+  onLongPress: (url: string, title: string, at: Point | null, pinnedKey: string | null) => void;
   onFolder: (tile: PinnedTile, anchor: RefObject<ViewInstance | null>) => void;
 };
 
@@ -292,8 +289,8 @@ function Row({ row, profileId, tint, onToggle, onShowAll, onLongPress, onFolder 
         <Pressable
           accessibilityRole="button"
           onPress={() => openRemote(row.url, row.title, profileId, row.pinnedKey)}
-          onLongPress={(event) => onLongPress(row.url, row.title, { x: event.nativeEvent.pageX, y: event.nativeEvent.pageY })}
-          {...screenReaderActions([{ name: "longpress", run: () => onLongPress(row.url, row.title, null) }])}
+          onLongPress={(event) => onLongPress(row.url, row.title, { x: event.nativeEvent.pageX, y: event.nativeEvent.pageY }, row.pinnedKey)}
+          {...screenReaderActions([{ name: "longpress", run: () => onLongPress(row.url, row.title, null, row.pinnedKey) }])}
           style={({ pressed }) => [styles.row, { paddingLeft: space.l + INDENT * row.depth }, pressed ? { backgroundColor: theme.rowHighlight } : null]}
         >
           <View testID="spaceTabIcon" style={[styles.tabSymbol, { width: iconSide, height: iconSide }]}>
@@ -330,9 +327,9 @@ function Row({ row, profileId, tint, onToggle, onShowAll, onLongPress, onFolder 
       );
     case "showAll":
       return (
-        <Pressable accessibilityRole="button" onPress={() => onShowAll(row.deviceId)} style={styles.showAll}>
-          <Text style={[font.subheadline, styles.bold, { color: tint }]}>Show All</Text>
-        </Pressable>
+        <Tappable kind="text" label={SHOW_ALL} onPress={() => onShowAll(row.deviceId)} style={styles.showAll}>
+          <Text style={[font.subheadline, styles.bold, { color: tint }]}>{SHOW_ALL}</Text>
+        </Tappable>
       );
     case "empty":
       return (
@@ -358,6 +355,9 @@ function groupSymbol(icon: string | null): SymbolName {
   return symbol && isSymbolName(symbol) ? symbol : "folderFill";
 }
 
+const FIX = "Fix";
+const SHOW_ALL = "Show All";
+
 const styles = StyleSheet.create({
   column: { flex: 1 },
   tabSymbol: { alignItems: "center", justifyContent: "center" },
@@ -366,12 +366,11 @@ const styles = StyleSheet.create({
   medium: { fontWeight: "500" },
   centered: { textAlign: "center" },
   header: { flexDirection: "row", alignItems: "center", gap: space.s, paddingLeft: space.l + 4, paddingRight: space.s, paddingTop: space.m, paddingBottom: space.xs },
-  headerButton: { width: 44, height: 44, alignItems: "center", justifyContent: "center" },
-  headerCircle: { width: spacesLayout.headerCircle, height: spacesLayout.headerCircle, borderRadius: controlRadius(spacesLayout.headerCircle), borderCurve: "continuous", alignItems: "center", justifyContent: "center" },
+  headerButton: slotAround(spacesLayout.headerCircle),
+  headerCircle: { width: spacesLayout.headerCircle, height: spacesLayout.headerCircle, borderRadius: capsule(spacesLayout.headerCircle), borderCurve: "continuous", alignItems: "center", justifyContent: "center" },
   banner: { flexDirection: "row", alignItems: "center", gap: spacesLayout.bannerGap, marginHorizontal: space.l, marginBottom: space.xs, padding: spacesLayout.bannerPadding, borderRadius: spacesLayout.bannerRadius },
-  fix: { borderWidth: StyleSheet.hairlineWidth, borderRadius: controlRadius(32), borderCurve: "continuous", minHeight: 32, paddingHorizontal: space.m, justifyContent: "center" },
   row: { flexDirection: "row", alignItems: "center", gap: space.s, minHeight: 48, paddingRight: space.l },
   sectionHeader: { flexDirection: "row", alignItems: "center", gap: spacesLayout.headerGap, paddingHorizontal: space.l, paddingTop: space.l, paddingBottom: spacesLayout.headerBottom },
-  showAll: { minHeight: 44, justifyContent: "center", paddingHorizontal: space.l },
+  showAll: { minHeight: controlSize.hitTarget, justifyContent: "center", paddingHorizontal: space.l },
   empty: { alignItems: "center", gap: spacesLayout.stackGap, paddingTop: space.huge * 2, paddingHorizontal: space.xxl },
 });

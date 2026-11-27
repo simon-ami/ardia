@@ -1,8 +1,9 @@
 import { predictiveBack, type PredictiveBackHandlers } from "@ardia/phone-native";
 import { Platform, Text } from "react-native";
 import { act } from "react-test-renderer";
-import { Dialog, DesignProvider, Sheet } from "../components/ui";
-import { backSwipe, materialSheetBackOffset, onMaterialBackSwiped } from "../components/ui/MaterialSurfaces";
+import { Dialog, DesignProvider, Menu, Sheet } from "../components/ui";
+import { backSwipe, materialSheetBackOffset, materialSheetFrame, onMaterialBackSwiped } from "../components/ui/MaterialSurfaces";
+import { floatingPanelLayout } from "../components/ui/tokens";
 import { renderSurface, unmount, withMaterialYou } from "../../test/render/harness";
 
 withMaterialYou();
@@ -115,6 +116,24 @@ onAndroid("a committed back swipe that moved counts once; a 3-button Back, which
   expect(counted).toHaveBeenCalledTimes(1);
 });
 
+onAndroid("a back swipe out of a menu opened privately counts nothing, while the same swipe out of a normal menu counts once", () => {
+  const counted = jest.fn();
+  onMaterialBackSwiped(counted);
+  const swipeOut = (privately: boolean) => {
+    const dismissed = jest.fn();
+    const root = material(<Menu items={[{ label: "Close Incognito Tabs", destructive: true, onPress: () => undefined }]} place={{ top: 100, left: 20 }} privately={privately} onDismiss={dismissed} />);
+    act(() => top().onProgress?.(0.6, "left"));
+    act(() => top().onCommit?.());
+    expect(dismissed).toHaveBeenCalledTimes(1);
+    unmount(root);
+  };
+  swipeOut(true);
+  expect(counted).not.toHaveBeenCalled();
+  swipeOut(false);
+  expect(counted).toHaveBeenCalledTimes(1);
+  onMaterialBackSwiped(() => undefined);
+});
+
 onAndroid("the sheet's drag-to-dismiss lives on its handle, so a tall sheet's content scrolls instead of dragging the sheet", () => {
   const root = material(
     <Sheet open onDismiss={() => undefined} onHidden={() => undefined}>
@@ -125,4 +144,13 @@ onAndroid("the sheet's drag-to-dismiss lives on its handle, so a tall sheet's co
   expect(grip.findAll((found) => found.props.testID === "materialDragHandle").length).toBeGreaterThan(0);
   expect(grip.findAll((found) => found.type === Text && found.props.children === "Rows")).toHaveLength(0);
   unmount(root);
+});
+
+test("the Material search sheet floats in from the screen edges like the iPhone tray and fills the screen when expanded", () => {
+  const gap = floatingPanelLayout.inset;
+  expect(materialSheetFrame(0, 0, 400, 400, 400, 0)).toEqual({ left: 0, width: 400 });
+  expect(materialSheetFrame(0, 1, 400, 400, 400, 0)).toEqual({ left: gap, width: 400 - gap * 2 });
+  expect(materialSheetFrame(0, 0.5, 400, 400, 400, 0)).toEqual({ left: gap / 2, width: 400 - gap });
+  expect(materialSheetFrame(1, 1, 400, 400, 400, 0)).toEqual({ left: 0, width: 400 });
+  expect(materialSheetFrame(0, 1, 1000, 640, 1000, 0)).toEqual({ left: 180, width: 640 });
 });

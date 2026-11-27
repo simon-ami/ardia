@@ -15,6 +15,9 @@ import { MiniWindow } from "../MiniWindow";
 import { PictureChoice } from "../PictureChoice";
 import { useSettingsColors } from "../useSettingsColors";
 import { keyText } from "../../../state/commands/keyText";
+import { useShortcutHint } from "../../../state/commands/commandShortcuts";
+import { noteSettingsPick } from "../../../state/telemetry/settingsPickerCounts";
+import { CommandKeyField, ShortcutConflict, useCommandConflicts } from "../ShortcutField";
 import { PLATFORM_TERMS } from "../../../lib/platformTerms";
 import type { SettingsPlace } from "../../../state/settings/settingsWindows";
 
@@ -91,6 +94,8 @@ export function TabsPane(_place: SettingsPlace) {
 function LayoutSection() {
   const top = useTabLayout() === "top";
   const sidebarSide = useSettings((s) => s.sidebarSide);
+  const autoHideKeys = useShortcutHint("toggleSidebar");
+  const autoHideConflicts = useCommandConflicts("toggleSidebar");
   return (
     <>
       <SectionHeader title="Layout" />
@@ -102,10 +107,9 @@ function LayoutSection() {
           </Box>
         </Anchor>
         <Group>
-          <SettingToggle
-            anchor="tabs.autoHideTabs"
-            description={`Tabs slide away until you point at the window's ${top ? "top edge" : "edge"}. ${keyText("⌘S")} toggles them in one window.`}
-          />
+          <SettingToggle anchor="tabs.autoHideTabs" description={autoHideConflicts.length ? <ShortcutConflict titles={autoHideConflicts} /> : autoHideDescription(top, autoHideKeys)}>
+            <CommandKeyField command="toggleSidebar" onChange={(change) => change !== "mouse" && noteSettingsPick("autoHideTabsKeys", change)} />
+          </SettingToggle>
           <Row anchor="tabs.sidebarSide">
             <Segmented options={SIDEBAR_SIDES} value={sidebarSide} onChange={chooseSidebarSide} />
           </Row>
@@ -116,6 +120,8 @@ function LayoutSection() {
     </>
   );
 }
+
+const autoHideDescription = (top: boolean, keys: string | undefined) => `Tabs slide away until you point at the ${top ? "top edge" : "edge"}.${keys ? ` ${keys} toggles.` : ""}`;
 
 const SCROLL_TOOLBAR: { hides: boolean; title: string; caption: string }[] = [
   { hides: false, title: "Keep the toolbar", caption: "Stays put while the page scrolls." },
@@ -167,6 +173,7 @@ function TabsAndTopAppsSection() {
         <SettingToggle anchor="tabs.balancedTopApps" />
         <SettingToggle anchor="tabs.topAppFolders" />
         <SettingToggle anchor="tabs.tabReorderHaptics" />
+        <SettingToggle anchor="tabs.swipeBetweenTabs" />
         <SettingToggle anchor="tabs.showTabHoverMenu" />
         <SettingToggle anchor="tabs.showFullUrlInTabHoverMenu" />
         <SettingToggle anchor="tabs.autoPictureInPicture" />
@@ -195,6 +202,7 @@ function NewTabsSection() {
         <Row anchor="tabs.newTabPosition">
           <PopUp value={newTabPosition} options={top ? NEW_TABS_ACROSS : NEW_TABS_DOWN} onChange={choosePosition} minWidth={190} />
         </Row>
+        <SettingToggle anchor="tabs.showTabMenuButton" />
         <SettingToggle anchor="tabs.appLinksFirst" />
         <SettingToggle anchor="tabs.shareTabsAcrossWindows" />
         <SettingToggle anchor="tabs.sleepingTabsInSwitcher" />

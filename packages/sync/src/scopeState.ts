@@ -2,7 +2,7 @@ import type { HLC } from "./hlc.ts";
 
 export type Origin = [device: string, seq: number];
 export type SyncRecord = { h: HLC; v: unknown; o: Origin };
-export type Op = { k: string; h: HLC; v: unknown };
+type Op = { k: string; h: HLC; v: unknown };
 
 export type LogFile = { v: 1; kind: "log"; device: string; seq: number; at: number; ops: Op[] };
 export type SnapshotFile = {
@@ -15,6 +15,8 @@ export type SnapshotFile = {
   records: Record<string, SyncRecord>;
 };
 export type SyncFile = LogFile | SnapshotFile;
+
+export type ApplyBatch = { id: number; p: string; l: string; at: number; done?: number; r?: 1; f?: 1; ok?: 1; cut?: string[]; k: Record<string, [from: string | null, to: string | null]> };
 
 type FileMeta = { d: string; k: "log" | "snapshot" | "bad"; s?: number; vv?: Record<string, number>; at: number; b?: number };
 
@@ -34,6 +36,7 @@ export type ScopeState = {
   joined: boolean;
   awaitRemote?: boolean;
   applyAs?: Record<string, "joined" | "joining">;
+  applying?: ApplyBatch[];
   snapshotAt: number;
   pending: number;
 };
@@ -82,6 +85,7 @@ export type ApplyRecords = {
   joined: boolean;
   held(): boolean;
   landed(key: string): void;
+  defer(key: string): void;
 };
 
 export interface Adapter {
@@ -97,8 +101,11 @@ export interface Adapter {
   ): Extraction | null | Promise<Extraction | null>;
   apply(visible: Map<string, unknown>, changed: Set<string>, base: (key: string) => unknown, records: ApplyRecords): boolean | void | Promise<boolean | void>;
   editedAt?(value: unknown): number | undefined;
+  extractsOnlyFrom?(): object | undefined;
   adoptRemoteOnJoin?: boolean;
   publishAfterPull?: boolean;
+  extractUsesBase?: boolean;
+  savesWhole?: boolean;
 }
 
 export type ScopeOptions = {
@@ -112,4 +119,8 @@ export type ScopeOptions = {
   damagedGiveUp?: number;
   persist?: (batches: LogFile[]) => Promise<void>;
   holdApply?: () => boolean;
+  persistApplying?: (batch: ApplyBatch) => Promise<void>;
+  launch?: string;
+  nativeSaveMs?: number;
+  monotonic?: () => number;
 };

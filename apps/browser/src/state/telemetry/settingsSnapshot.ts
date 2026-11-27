@@ -13,6 +13,9 @@ import { isMouseKey } from "../commands/mouseButtons";
 import { currentInterfaceScale } from "../settings/interfaceScale";
 import { INTERFACE_SCALE, interfaceScalePercent, rootLength, windowLength } from "../../lib/interfaceScale";
 import { drawnWindowCornerRadius } from "../../platform/windows";
+import { desktopButtonLayout, useDesktopButtons, type DesktopButtons } from "../windows/windowButtons";
+import { buttonLayoutCount, buttonLayoutSide } from "../../lib/windowButtonLayout";
+import { windowButtonsChoosable } from "../../lib/windowChrome";
 
 export const SETTINGS_SNAPSHOT_EVENT = "settings_snapshot";
 
@@ -61,8 +64,14 @@ export function settingsSnapshot(settings: Settings): Record<string, string> {
   };
 }
 
+export function windowButtonLayoutSnapshot(desktop: DesktopButtons = useDesktopButtons.getState(), choosable = windowButtonsChoosable): Record<string, string> {
+  if (!choosable) return {};
+  const layout = desktopButtonLayout(desktop);
+  return { window_buttons_side: buttonLayoutSide(layout), window_buttons_count: String(buttonLayoutCount(layout)), window_buttons_from_desktop: typeof desktop.raw === "string" ? "true" : "false", window_buttons_tiling_desktop: desktop.tiling ? "true" : "false" };
+}
+
 export const appIconSetting = (icon: string | null): Record<string, string> =>
-  icon && /^[a-z]{1,16}$/.test(icon) ? { setting_app_icon: icon, default_app_icon: "default" } : {};
+  icon && /^[a-z]{1,16}(-flat)?$/.test(icon) ? { setting_app_icon: icon, default_app_icon: "default" } : {};
 
 export function customColorProfiles(profiles: Record<string, PresetLookFields>, defaultProfileId?: string): Record<string, string> {
   const all = Object.values(profiles);

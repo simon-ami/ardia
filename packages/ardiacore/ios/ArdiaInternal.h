@@ -33,7 +33,6 @@ ArdiaCoreTab *_Nullable TabWithBrowserId(int browserId);
 NSString *_Nullable AppTabIdOf(ArdiaCoreTab *_Nullable tab);
 id AppTabIdValue(ArdiaCoreTab *_Nullable tab);
 ArdiaCoreTab *_Nullable TabWithAppTabId(NSString *_Nullable tabId);
-NSString *_Nullable AppTabIdContaining(NSView *_Nullable view);
 void HoldUntilHosted(ArdiaCoreTab *tab, NSString *event, NSDictionary *payload);
 void ReleaseHeldEvents(ArdiaCoreTab *tab);
 void DropHeldEvent(NSString *event, NSString *eventId);
@@ -41,6 +40,9 @@ void DropHeldEvent(NSString *event, NSString *eventId);
 NSString *AppDisposition(NSString *chromeDisposition);
 
 void InstallActivationGuardsEarly();
+bool HasArmedPanels();
+void SweepFileArmsAtLaunch();
+NSArray<NSURL *> *_Nullable ArmedPanelPicks(NSSavePanel *panel, NSWindow *_Nullable parent, bool *handled, NSString *_Nullable *_Nonnull armId);
 void InstallActivationGuardsLate();
 bool Background();
 void LogActivation(NSString *what);
@@ -54,9 +56,18 @@ NSString *PageMoveAt(NSWindow *window, NSPoint point);
 NSString *HoverProbeDev(NSWindow *window, NSString *_Nullable argument);
 NSString *HoverProbeLine();
 void WatchHover();
+inline void KeepHitsWhileClear(NSView *view, bool keep) {
+  if ([view respondsToSelector:NSSelectorFromString(@"setArdiaKeepsHitsWhileClear:")]) [view setValue:@(keep) forKey:@"ardiaKeepsHitsWhileClear"];
+}
+void ReportHoverEpisodeAtQuit();
+bool HoverEpisodeReportedAtQuitOpen();
+NSInteger HoverEpisodeReportedAtQuitSeconds();
+void MarkHoverEpisodeCommittedAtQuit();
+void CancelHoverEpisodeAtQuit();
 void WatchPageCursor();
 NSString *PageCursorDev(NSWindow *window, NSString *_Nullable argument);
 NSString *PaintProbeLine();
+void CheckPaintingAfterProfileSwitch(NSWindow *_Nullable window);
 void WatchPainting();
 NSString *DescribeFocusWindow(NSWindow *_Nullable window);
 void NoteFocusChange(NSString *what, NSWindow *_Nullable window);

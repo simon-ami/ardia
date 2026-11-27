@@ -1,15 +1,18 @@
-import { Platform, ScrollView, StyleSheet } from "react-native";
+import { Dimensions, Platform, ScrollView, StyleSheet } from "react-native";
 import { act, type ReactTestInstance } from "react-test-renderer";
-import { MaterialSettingsScreen, SettingsView } from "../components/settings/SettingsView";
+import { Surfaces } from "../App";
+import { SettingsView } from "../components/settings/SettingsView";
 import { materialAppBarFill } from "../components/settings/MaterialSettingsKit";
 import { DesignProvider } from "../components/ui";
+import { MaterialBottomBar } from "../components/ui/MaterialBottomBar";
 import { SEEDED_SCHEMES } from "../lib/material/schemes";
 import { setDynamicScheme } from "../state/app/dynamicScheme";
 import * as settingsActions from "../state/settings/actions";
 import { closeSettings, openSettings, pushSettings, useSettingsNav } from "../state/settings/nav";
-import { currentPreferences, loadPreferences, setPreference } from "../state/settings/store";
+import { currentPreferences, loadPreferences, setPreference, usePreferences } from "../state/settings/store";
 import { classicOnAndroid, renderSurface, unmount, withTabs, withMaterialYou } from "../../test/render/harness";
 import { pages } from "../platform/pages";
+import { closeArchive, openArchive } from "../state/browse/store";
 
 withMaterialYou();
 
@@ -35,28 +38,38 @@ type Root = ReturnType<typeof renderSurface>;
 const node = (root: Root, id: string) => root.root.findAll((found) => found.props.testID === id && typeof found.type === "string")[0];
 const pressable = (root: Root, id: string) => root.root.findAll((found) => found.props.testID === id && typeof found.props.onPress === "function" && found.props.android_ripple !== undefined)[0]!;
 const flat = (found: ReactTestInstance | undefined) => StyleSheet.flatten(found?.props.style) ?? {};
+const textOfNode = (found: ReactTestInstance) => found.findAll((inner) => typeof inner.props.children === "string").map((inner) => inner.props.children as string).join(" ");
 
 const settings = () =>
   renderSurface(
     <DesignProvider design="material">
-      <MaterialSettingsScreen />
+      <Surfaces />
     </DesignProvider>,
   );
 
-onAndroid("Material Settings fills the screen with a 112 dp medium top app bar and no sheet scrim or grip", () => {
+type Detected = { toGestureArray?: () => { config: { testId?: string; enabled?: boolean } }[] };
+const sheetDragEnabled = (root: Root) =>
+  root.root
+    .findAll((found) => typeof (found.props.gesture as Detected | undefined)?.toGestureArray === "function")
+    .flatMap((found) => (found.props.gesture as Required<Detected>).toGestureArray())
+    .filter((gesture) => gesture.config.testId === "fullSheetDrag")
+    .map((gesture) => gesture.config.enabled !== false)
+    .pop();
+
+onAndroid("Material Settings fills the screen with a 112 dp medium top app bar, no sheet gap, corners or drag", () => {
   const root = settings();
-  expect(flat(node(root, "materialSettingsScreen"))).toMatchObject(StyleSheet.absoluteFill);
-  expect(node(root, "materialScrim")).toBeUndefined();
-  expect(node(root, "materialSheetGrip")).toBeUndefined();
+  expect(flat(node(root, "fullSheet"))).toMatchObject({ top: 0, left: 0, right: 0, bottom: 0, borderTopLeftRadius: 0, borderTopRightRadius: 0, backgroundColor: LIGHT.surfaceContainer });
+  expect(node(root, "fullSheet")!.props.accessibilityViewIsModal).toBe(true);
+  expect(sheetDragEnabled(root)).toBe(false);
   expect(flat(node(root, "materialSettingsPage")).backgroundColor).toBe(LIGHT.surfaceContainer);
   const bar = node(root, "materialTopAppBar")!;
-  expect(flat(bar).backgroundColor).toBe(LIGHT.surfaceContainer);
+  expect(flat(bar)).toMatchObject({ paddingTop: 40, backgroundColor: LIGHT.surfaceContainer });
   expect(flat(bar.findAll((found) => typeof found.type === "string" && flat(found).minHeight === 64)[0])).toMatchObject({ minHeight: 64 });
   expect(flat(node(root, "materialMediumTitle"))).toMatchObject({ height: 48, fontSize: 28, color: LIGHT.onSurface });
   expect(node(root, "settingsTitle")!.props.children).toBeNull();
-  const row = node(root, "materialSettingsRow:Search Engine")!;
+  const row = node(root, "materialSettingsRow:Search")!;
   expect(flat(row).minHeight).toBeGreaterThanOrEqual(56);
-  expect(pressable(root, "materialSettingsRow:Search Engine").props.android_ripple).toMatchObject({ borderless: false });
+  expect(pressable(root, "materialSettingsRow:Search").props.android_ripple).toMatchObject({ borderless: false });
   expect(row.findAll((found) => found.props.name === "chevronRight")).toHaveLength(0);
   expect(flat(node(root, "materialSettingsIconSlot"))).toMatchObject({ width: 24, height: 24 });
   expect(row.findAll((found) => found.props.name === "magnifyingglass")[0]?.props.color).toBe(LIGHT.onSurfaceVariant);
@@ -65,15 +78,52 @@ onAndroid("Material Settings fills the screen with a 112 dp medium top app bar a
 
 onAndroid("the app bar takes surfaceContainerHigh once the list scrolls under it, as Material's top app bar does", () => {
   const root = settings();
-  const list = root.root.findAll((found) => found.type === ScrollView)[0]!;
+  const list = node(root, "materialSettingsPage")!.findAll((found) => found.type === ScrollView)[0]!;
   act(() => list.props.onScroll({ nativeEvent: { contentOffset: { x: 0, y: 80 } } }));
   expect(flat(node(root, "materialTopAppBar")).backgroundColor).toBe(LIGHT.surfaceContainerHigh);
   expect(node(root, "settingsTitle")!.props.children).toBe("Settings");
   expect(flat(node(root, "settingsTitle"))).toMatchObject({ fontSize: 22 });
   act(() => list.props.onScroll({ nativeEvent: { contentOffset: { x: 0, y: 0 } } }));
   expect(node(root, "settingsTitle")!.props.children).toBeNull();
+  expect(flat(node(root, "materialTopAppBar")).backgroundColor).toBe(LIGHT.surfaceContainer);
   expect(materialAppBarFill(LIGHT, false)).toBe(LIGHT.surfaceContainer);
   unmount(root);
+});
+
+onAndroid("Archive keeps the Material bottom sheet, with its top gap, corners and drag", () => {
+  act(() => closeSettings());
+  act(() => jest.runOnlyPendingTimers());
+  act(() => openArchive());
+  const root = settings();
+  const sheet = flat(node(root, "fullSheet"));
+  expect(sheet.top).toBe(40);
+  expect(sheet.borderTopLeftRadius).toBe(28);
+  expect(sheetDragEnabled(root)).toBe(true);
+  act(() => closeArchive());
+  unmount(root);
+});
+
+onAndroid("the original design's Settings keep their 24 dp gap between sections", () => {
+  const classic = renderSurface(classicOnAndroid(<SettingsView />));
+  expect(flat(node(classic, "settingsPageContent")).gap).toBe(24);
+  unmount(classic);
+});
+
+onAndroid("the collapsed app bar title follows the list's latest offset when the font scale raises the medium title", () => {
+  const root = settings();
+  const list = node(root, "materialSettingsPage")!.findAll((found) => found.type === ScrollView)[0]!;
+  act(() => list.props.onScroll({ nativeEvent: { contentOffset: { x: 0, y: 60 } } }));
+  act(() => list.props.onScroll({ nativeEvent: { contentOffset: { x: 0, y: 200 } } }));
+  expect(node(root, "settingsTitle")!.props.children).toBe("Settings");
+  const window = Dimensions.get("window");
+  act(() => Dimensions.set({ window: { ...window, fontScale: 2 }, screen: Dimensions.get("screen") }));
+  try {
+    expect(flat(node(root, "materialMediumTitle")).height).toBe(84);
+    expect(node(root, "settingsTitle")!.props.children).toBe("Settings");
+  } finally {
+    act(() => Dimensions.set({ window, screen: Dimensions.get("screen") }));
+    unmount(root);
+  }
 });
 
 onAndroid("groups are Material 3 Expressive: rows as surfaceBright segments 2 dp apart, 20 dp outer corners and 4 dp inner ones, and no dividers", () => {
@@ -89,8 +139,9 @@ onAndroid("groups are Material 3 Expressive: rows as surfaceBright segments 2 dp
 
 onAndroid("switch rows are one switch for TalkBack with a Material switch inside, and a tap anywhere flips them", () => {
   const set = jest.spyOn(settingsActions, "setSearchSuggestions").mockImplementation(() => undefined as never);
+  act(() => pushSettings({ page: "search" }));
   const root = settings();
-  const row = pressable(root, "materialSettingsRow:Search Suggestions");
+  const row = pressable(root, "materialSettingsRow:Search suggestions");
   expect(row.props.accessibilityRole).toBe("switch");
   expect(row.findAll((found) => found.props.testID === "materialSwitch" && typeof found.type === "string")).toHaveLength(1);
   const checked = row.props.accessibilityState.checked;
@@ -105,15 +156,20 @@ onAndroid("Dynamic Colors switches immediately between wallpaper and a saved cus
   setDynamicScheme(SEEDED_SCHEMES.green);
   setPreference("colorChoice", "blue");
   setPreference("dynamicColors", true);
+  act(() => pushSettings({ page: "appearance" }));
   const root = settings();
   const toggle = () => pressable(root, "materialSettingsRow:Dynamic Colors");
+  const blue = () => root.root.findAll((found) => found.props.accessibilityLabel === "Blue" && typeof found.props.onPress === "function")[0]!;
   expect(toggle().props.accessibilityState.checked).toBe(true);
   expect(flat(node(root, "materialSettingsPage")).backgroundColor).toBe(SEEDED_SCHEMES.green.light.surfaceContainer);
-  expect(root.root.findAll((found) => found.props.accessibilityRole === "radio")).toHaveLength(0);
+  expect(blue().props.accessibilityState.disabled).toBe(true);
   act(() => toggle().props.onPress());
   expect(flat(node(root, "materialSettingsPage")).backgroundColor).toBe(SEEDED_SCHEMES.blue.light.surfaceContainer);
-  expect(root.root.findAll((found) => found.props.accessibilityRole === "radio").length).toBeGreaterThan(0);
-  act(() => loadPreferences());
+  expect(blue().props.accessibilityState.disabled).toBeUndefined();
+  act(() => {
+    loadPreferences();
+    usePreferences.setState({ materialYou: true });
+  });
   expect(currentPreferences().dynamicColors).toBe(false);
   expect(currentPreferences().colorChoice).toBe("blue");
   act(() => toggle().props.onPress());
@@ -124,9 +180,10 @@ onAndroid("Dynamic Colors switches immediately between wallpaper and a saved cus
 
 onAndroid("a picker row shows its choice as supporting text and opens a Material dialog with a radio list; picking closes it and applies", () => {
   const set = jest.spyOn(settingsActions, "setArchiveInterval").mockImplementation(() => undefined as never);
+  act(() => pushSettings({ page: "tabs" }));
   const root = settings();
   act(() => {
-    pressable(root, "materialSettingsRow:Archive Inactive Tabs").props.onPress();
+    pressable(root, "materialSettingsRow:Archive inactive tabs").props.onPress();
   });
   expect(node(root, "materialDialog")).toBeDefined();
   const radios = node(root, "materialRadioList")!.findAll((found) => typeof found.type === "string" && found.props.accessibilityRole === "radio");
@@ -180,5 +237,89 @@ onAndroid("Collapse Bottom Bar in Material Site Settings starts on by default an
   expect(row().props.accessibilityState.checked).toBe(false);
   expect(currentPreferences().collapsesBottomBar).toBe(false);
   setPreference("collapsesBottomBar", null);
+  unmount(root);
+});
+
+const rowLabels = (root: Root) => {
+  const labels: string[] = [];
+  for (const found of root.root.findAll((inner) => typeof inner.props.onPress === "function" && typeof inner.props.accessibilityLabel === "string")) {
+    const label = (found.props.accessibilityLabel as string).split(", ")[0]!;
+    if (!["Back", "Close", "Done", "Custom"].includes(label) && labels.at(-1) !== label) labels.push(label);
+  }
+  return labels;
+};
+
+const PAGES = ["root", "general", "tabs", "appearance", "search", "siteSettings"] as const;
+
+onAndroid("Material Settings has the iPhone layout's structure: the same pane list on the root and the same rows on every pane, only drawn in Material", () => {
+  for (const page of PAGES) {
+    act(() => openSettings(page === "root" ? undefined : { page }));
+    const material = renderSurface(<DesignProvider design="material"><SettingsView /></DesignProvider>);
+    const iPhone = renderSurface(<DesignProvider design="redesigned"><SettingsView /></DesignProvider>);
+    expect(node(material, "materialSettingsPage")).toBeDefined();
+    expect(node(iPhone, "materialSettingsPage")).toBeUndefined();
+    const labels = rowLabels(material);
+    expect(labels.length).toBeGreaterThan(0);
+    expect(labels).toEqual(rowLabels(iPhone));
+    if (page === "root") expect(labels).toEqual(["Sync With Mac", "General", "Tabs", "Appearance", "Search", "Site settings"]);
+    unmount(material);
+    unmount(iPhone);
+  }
+});
+
+onAndroid("the Material root is the pane list with a close button, no Archive or Spaces shortcuts and no switches", () => {
+  const root = settings();
+  for (const pane of ["General", "Tabs", "Appearance", "Search", "Site settings"]) expect(pressable(root, `materialSettingsRow:${pane}`)).toBeDefined();
+  expect(node(root, "settingsShortcuts")).toBeUndefined();
+  expect(root.root.findAll((found) => found.props.accessibilityRole === "switch")).toHaveLength(0);
+  expect(node(root, "materialSettingsClose")).toBeDefined();
+  unmount(root);
+});
+
+onAndroid("Material rows without an icon start their text at the row inset, with no empty icon slot", () => {
+  act(() => pushSettings({ page: "appearance" }));
+  const root = settings();
+  for (const title of ["Material You", "Glass", "Dark"]) {
+    const row = node(root, `materialSettingsRow:${title}`)!;
+    expect(row).toBeDefined();
+    expect(row.findAll((found) => found.props.testID === "materialSettingsIconSlot")).toHaveLength(0);
+    expect(flat(row).paddingHorizontal).toBe(16);
+  }
+  act(() => pushSettings({ page: "general" }));
+  const general = node(root, "materialSettingsRow:Clear browsing data")!;
+  expect(general.findAll((found) => found.props.testID === "materialSettingsIconSlot")).toHaveLength(0);
+  expect(textOfNode(general)).toContain("History, cookies and cached files.");
+  unmount(root);
+});
+
+onAndroid("Appearance opened in Material keeps the Material You and Dynamic Colors switches as Material rows", () => {
+  setDynamicScheme(SEEDED_SCHEMES.green);
+  setPreference("colorChoice", "blue");
+  setPreference("dynamicColors", true);
+  act(() => pushSettings({ page: "appearance" }));
+  const root = settings();
+  expect(node(root, "materialSettingsPage")).toBeDefined();
+  expect(pressable(root, "materialSettingsRow:Material You").props.accessibilityState.checked).toBe(true);
+  expect(root.root.findAll((found) => found.props.testID === "materialSettingsRow:Glass" && found.props.accessibilityRole === "radio")[0]!.props.accessibilityState).toMatchObject({ disabled: true });
+  const dynamic = pressable(root, "materialSettingsRow:Dynamic Colors");
+  expect(dynamic.props.accessibilityState.checked).toBe(true);
+  const scheme = () => root.root.findAll((found) => found.type === MaterialBottomBar)[0]!.props.scheme;
+  expect(scheme()).toEqual(SEEDED_SCHEMES.green.light);
+  act(() => dynamic.props.onPress());
+  expect(scheme()).toEqual(SEEDED_SCHEMES.blue.light);
+  expect(currentPreferences().dynamicColors).toBe(false);
+  unmount(root);
+});
+
+onAndroid("My Filters and the Tabs pane stay full-screen Material pages, and Tabs shows the layout Material You supports", () => {
+  act(() => pushSettings({ page: "myFilters" }));
+  const root = settings();
+  expect(sheetDragEnabled(root)).toBe(false);
+  expect(flat(node(root, "fullSheet")).top).toBe(0);
+  act(() => pushSettings({ page: "tabs" }));
+  expect(sheetDragEnabled(root)).toBe(false);
+  expect(node(root, "materialSettingsPage")).toBeDefined();
+  expect(root.root.findAll((found) => found.props.accessibilityLabel === "Stack" && typeof found.props.onPress === "function")[0]!.props.accessibilityState).toMatchObject({ selected: true, disabled: true });
+  expect(root.root.findAll((found) => found.props.accessibilityLabel === "Grid" && typeof found.props.onPress === "function")[0]!.props.accessibilityState).toMatchObject({ selected: false, disabled: true });
   unmount(root);
 });

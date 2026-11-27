@@ -97,6 +97,7 @@ struct ArdiaPageReports {
   BOOL autoPictureInPictureActive{};
   BOOL keptByWindowServer{};
   BOOL playedForAutoPictureInPicture{};
+  NSUInteger autoPictureInPictureWatch{};
 };
 
 struct ArdiaCommits {
@@ -105,6 +106,16 @@ struct ArdiaCommits {
   double at{};
   int httpStatus{};
   int documents{};
+};
+
+struct ArdiaElementPick {
+  __weak ArdiaCoreTab *tab;
+  int documents{};
+  double armed{};
+  BOOL input{};
+  NSPoint menuPoint{};
+  CFTimeInterval menuAt{-1};
+  __weak ArdiaCoreTab *menuTab;
 };
 
 struct ArdiaFocusAsk {
@@ -166,11 +177,14 @@ struct ArdiaPageFocusState {
   BOOL _pinned;
   NSView *_devtoolsView;
   CFTimeInterval _linkDropAt;
+  ArdiaElementPick _elementPick;
   NSMutableArray<NSDictionary<NSString *, id> *> *_newTabLinks;
   id _sightObserver;
   id _interfaceScaleObserver;
 }
 - (ArdiaWindowController *)controller;
+- (void)notePageMetrics:(NSDictionary *)metrics main:(BOOL)main;
+- (void)sendMetricsGenerationTo:(NSString *)frameId;
 - (void)emit:(NSString *)name payload:(NSDictionary *)payload;
 @end
 

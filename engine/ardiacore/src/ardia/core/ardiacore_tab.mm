@@ -4,6 +4,7 @@
 #include <string>
 #include <vector>
 
+#include "base/functional/bind.h"
 #include "base/strings/sys_string_conversions.h"
 #include "chrome/browser/ardia/ac_tab_restore.h"
 #include "chrome/browser/lifetime/browser_shutdown.h"
@@ -40,6 +41,7 @@
 #include "ardia/core/ac_autofill_trigger.h"
 #include "ardia/core/ac_browser.h"
 #include "ardia/core/ac_content_hooks.h"
+#include "ardia/core/ac_discard_veto.h"
 #include "ardia/core/ac_extension_view.h"
 #include "ardia/core/ac_page_channel.h"
 #include "ardia/core/ac_password_prompt.h"
@@ -172,6 +174,10 @@ using ardiacore::NS;
   if (!_contents) {
     return NO;
   }
+  ardiacore::TabBridge* asking = ardiacore::TabBridge::FromWebContents(_contents);
+  if (asking && asking->holds_leave_ask()) {
+    return NO;
+  }
   auto* unit =
       resource_coordinator::TabLifecycleUnitExternal::FromWebContents(_contents);
   return unit && unit->DiscardTab(
@@ -187,6 +193,10 @@ using ardiacore::NS;
   }
   if (_contents->WasDiscarded()) {
     return @[];
+  }
+  NSMutableArray<NSNumber*>* vetoes = [NSMutableArray array];
+  for (ardiacore::DiscardVeto veto : ardiacore::DiscardVetoesFor(_contents)) {
+    [vetoes addObject:@(static_cast<int>(veto))];
   }
   if (!PerformanceManager::IsAvailable()) {
     return unavailable;
@@ -205,10 +215,14 @@ using ardiacore::NS;
   const auto reason =
       policies::DiscardEligibilityPolicy::DiscardReason::PROACTIVE;
   std::vector<policies::CannotDiscardReason> kept_by;
-  if (eligibility->CanDiscardWithCustomRecentVisibilityWindow(
-          page.get(), reason, base::Seconds(seconds), &kept_by) !=
-      policies::CanDiscardResult::kEligible) {
-    NSMutableArray<NSNumber*>* codes = [NSMutableArray array];
+  policies::CanDiscardResult eligible;
+  {
+    ardiacore::ScopedDiscardVetoBypass chrome_reasons_only;
+    eligible = eligibility->CanDiscardWithCustomRecentVisibilityWindow(
+        page.get(), reason, base::Seconds(seconds), &kept_by);
+  }
+  if (eligible != policies::CanDiscardResult::kEligible || vetoes.count) {
+    NSMutableArray<NSNumber*>* codes = vetoes;
     for (policies::CannotDiscardReason kept : kept_by) {
       [codes addObject:@(static_cast<int>(kept))];
     }
@@ -454,6 +468,10 @@ using ardiacore::NS;
           TabStripModel::kNoTab) {
     return;
   }
+  if (bridge->asking_before_leaving() && !browser_shutdown::HasShutdownStarted()) {
+    bridge->CloseAfterLeaveAsk();
+    return;
+  }
   bridge->set_closed_by_host();
   if (!browser_shutdown::HasShutdownStarted() &&
       _contents->NeedToFireBeforeUnloadOrUnloadEvents()) {
@@ -463,6 +481,29 @@ using ardiacore::NS;
     return;
   }
   ardiacore::DeleteTabClosedByHost(_contents);
+}
+
+- (BOOL)asksBeforeLeaving {
+  if (!_contents) {
+    return NO;
+  }
+  ardiacore::TabBridge* bridge = ardiacore::TabBridge::FromWebContents(_contents);
+  if (bridge && bridge->asking_before_leaving()) {
+    return YES;
+  }
+  return !(bridge && bridge->closing_after_unload()) &&
+         _contents->NeedToFireBeforeUnload();
+}
+
+- (void)askBeforeLeaving:(void (^)(BOOL leave))answer {
+  if (!self.asksBeforeLeaving) {
+    answer(YES);
+    return;
+  }
+  ardiacore::TabBridge::GetOrCreate(_contents)->AskBeforeLeaving(
+      base::BindOnce(^(bool leave) {
+        answer(leave);
+      }));
 }
 
 - (void)close {
@@ -479,7 +520,12 @@ using ardiacore::NS;
   if (!browser) {
     return;
   }
-  ardiacore::TabBridge::GetOrCreate(_contents)->set_closed_by_host();
+  ardiacore::TabBridge* bridge = ardiacore::TabBridge::GetOrCreate(_contents);
+  if (bridge->asking_before_leaving() && !browser_shutdown::HasShutdownStarted()) {
+    bridge->CloseAfterLeaveAsk();
+    return;
+  }
+  bridge->set_closed_by_host();
   TabStripModel* model = browser->GetTabStripModel();
   int index = model->GetIndexOfWebContents(_contents);
   if (index != TabStripModel::kNoTab) {

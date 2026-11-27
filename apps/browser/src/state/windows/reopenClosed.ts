@@ -1,3 +1,4 @@
+import { withEntry } from "../browser/changes";
 import type { BrowserState } from "../browser/store";
 import { rejoinGroups } from "../groups/groups";
 import { withShownTab } from "../groups/shownTabs";
@@ -5,11 +6,12 @@ import { findLast, inPinnedContainer, isIncognitoProfile, makeTab, newId, pinKey
 import { restoreId } from "../tabs/adoptIds";
 import { adoptedPage, hasPage } from "../tabs/pageSession";
 import { adoptParkedPins } from "../pins/parkedPins";
+import { restoreIndex } from "../pins/closedTabs";
 import { holderOf, swapPinPage } from "../pins/pinShare";
 import { isOpenRegularWindow, lastActiveProfile } from "./small";
 import { activated, apply, withNewTab } from "../tabs/tabs";
 import type { ClosedTab, ClosedWindow, SplitView, TabGroup } from "../browser/types";
-import { mapSlotIds, slotTabIds } from "../splits/splits";
+import { mapSlotIds, normalized, slotTabIds } from "../splits/splits";
 import { emptyWindow, smallWindow, withWindow } from "./newWindow";
 import { orderSections } from "../groups/groups";
 import { clearableRecentlyClosed, newestClosed } from "./recentlyClosedList";
@@ -19,7 +21,7 @@ function restoreGroup(groups: Record<string, TabGroup>, g: Omit<TabGroup, "tabId
   return [{ ...groups, [id]: { ...g, id, tabIds } }, id];
 }
 
-export function shownProfile(s: BrowserState, windowId: string | undefined, profileId: string | undefined): boolean {
+function shownProfile(s: BrowserState, windowId: string | undefined, profileId: string | undefined): boolean {
   return !windowId || profileId === s.windows[windowId]!.profileId;
 }
 
@@ -55,8 +57,18 @@ export function withoutRecentlyClosed(s: BrowserState, windowId: string | null |
   return gone.size ? { cleared: gone.size, next } : undefined;
 }
 
+const hasProfileIndex = (entry: ClosedTab): entry is ClosedTab & { profileIndex: number } =>
+  typeof entry.profileIndex === "number" && Number.isFinite(entry.profileIndex);
+
 const closedBefore = (closed: ClosedTab[], entry: ClosedTab) =>
-  entry.closeBatch ? closed.filter((c) => c.closeBatch === entry.closeBatch && c.index < entry.index).length : 0;
+  entry.closeBatch
+    ? closed.filter((c) =>
+        c.closeBatch === entry.closeBatch &&
+        (hasProfileIndex(entry)
+          ? c.tab.profileId === entry.tab.profileId && (hasProfileIndex(c) ? c.profileIndex : c.index) < entry.profileIndex
+          : c.index < entry.index),
+      ).length
+    : 0;
 
 function canRestoreTabInto(s: BrowserState, c: ClosedTab, windowId: string | undefined): boolean {
   const w = windowId ? s.windows[windowId] : undefined;
@@ -97,7 +109,7 @@ export function restoreTab(s: BrowserState, entry: ClosedTab, requested?: string
   if (tile) {
     const unloaded = !hasPage(tile);
     const tabs = unloaded
-      ? { ...s.tabs, [tile.id]: { ...tile, url: entry.tab.url, title: entry.tab.title, favicon: entry.tab.favicon, muted: entry.tab.muted, page: adoptedPage(restoreId(entry.restoreFrom ?? tile.id)) } }
+      ? withEntry(s.tabs, tile.id, { ...tile, url: entry.tab.url, title: entry.tab.title, favicon: entry.tab.favicon, muted: entry.tab.muted, page: adoptedPage(restoreId(entry.restoreFrom ?? tile.id)) })
       : s.tabs;
     const next: BrowserState = { ...s, closedTabs, tabs };
     return apply(next, activated(next, tile.id));
@@ -116,7 +128,7 @@ export function restoreTab(s: BrowserState, entry: ClosedTab, requested?: string
     url: entry.tab.url || undefined,
     profileId,
     snapshot: entry.tab,
-    index: w.id === entry.windowId ? entry.index - closedBefore(closedTabs, entry) : undefined,
+    index: profileId === entry.tab.profileId ? restoreIndex(next, windowId, profileId, entry, closedBefore(closedTabs, entry)) : undefined,
     adoptId: entry.tabId && entry.tab.url ? restoreId(entry.restoreFrom ?? entry.tabId) : undefined,
   });
   next = withTab;
@@ -174,7 +186,7 @@ function restoredSplits(splits: Record<string, SplitView>, entry: ClosedWindow, 
     if (panes.length < 2 || panes.some((p) => !p || taken.has(p))) continue;
     panes.forEach((p) => taken.add(p));
     const splitId = newId("split");
-    next = { ...next, [splitId]: { id: splitId, windowId, orientation: v.orientation, slots } };
+    next = { ...next, [splitId]: normalized({ id: splitId, windowId, orientation: v.orientation, slots }) };
   }
   return next;
 }

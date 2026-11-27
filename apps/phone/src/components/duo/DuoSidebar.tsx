@@ -16,13 +16,16 @@ import { tabsInSpace } from "../../state/tabs/spaces";
 import { useTabs } from "../../state/tabs/store";
 import { recencyOrder, type BrowserTab } from "../../state/tabs/tabModels";
 import { countUsage } from "../../state/telemetry/telemetry";
-import { capsule, controlRadius, ChromeSurface, ConfirmSheet, Favicon, font, IncognitoSpecs, rolesFor, startInk, startLayout, Symbol, tabsInk, tabsLayout, useTheme, type Confirmation, type MenuItem } from "../ui";
+import { actionWords, destinationWords } from "../../lib/sharedWords";
+import { capsule, ChromeSurface, ConfirmSheet, Favicon, font, iconRoles, IncognitoSpecs, rolesFor, shadowCss, smoothCorners, startInk, startLayout, Symbol, Tappable, tabsInk, tabsLayout, useTheme, type Confirmation, type MenuItem, usePressStyle } from "../ui";
 import { confirmInSheet, MenuTrigger, spaceSystemImage } from "../ui/MenuTrigger";
-import { barAddress, spokenAddress } from "../browsing/FloatingBar";
+import { barAddress } from "../browsing/FloatingBar";
 import { spaceMenuSymbol, SpaceTitle } from "../search/StartSpaces";
 import { DUO } from "./duoLayout";
-import { HostLabel, SidebarGlyph } from "./DuoToolbar";
-import { duoInk } from "./tokens";
+import { DuoAddressField, useTabPrivate } from "./DuoToolbar";
+import { CLOSE_TAB } from "../tabs/tabCard";
+import { dotBesideGlyph, NoticeDot, withUpdateWords } from "../settings/UpdateDot";
+import { useUpdateDot } from "../../state/appUpdate/store";
 
 export type DuoSidebarVariant = "overlay" | "panel";
 
@@ -62,7 +65,7 @@ export function DuoSidebar({ variant, onClose }: Props) {
   };
   return (
     <View testID={variant === "overlay" ? "duoSidebar" : "duoPanel"} accessibilityLabel={variant === "overlay" ? "Sidebar" : "Tabs"} style={styles.fill}>
-      {variant === "overlay" ? <View testID="duoSidebarFill" pointerEvents="none" style={[StyleSheet.absoluteFill, styles.overlayFill, { backgroundColor: incognito ? tabsInk.incognitoSheet : theme.surface }]} /> : null}
+      {variant === "overlay" ? <View testID="duoSidebarFill" pointerEvents="none" style={[StyleSheet.absoluteFill, styles.overlayFill, { backgroundColor: incognito ? tabsInk.incognitoSheet : theme.canvas, boxShadow: shadowCss("floating", dark) }]} /> : null}
       <View testID="duoSidebarHeader" style={[styles.header, { marginTop: variant === "overlay" ? DUO.sidebarHeaderTop : DUO.panelTop }]}>
         <View style={styles.switcher}>
           {current && spaces.length > 1 ? (
@@ -75,9 +78,9 @@ export function DuoSidebar({ variant, onClose }: Props) {
               place={{ width: tabsLayout.menuWidth }}
             >
               {({ onPress }) => (
-                <Pressable accessibilityRole="button" accessibilityLabel={`Space, ${current.name}`} accessibilityHint="Shows your Mac’s spaces." onPress={onPress}>
+                <Tappable kind="text" label={`Space, ${current.name}`} hint="Shows your Mac’s spaces." onPress={onPress ?? noop}>
                   <SpaceTitle space={current} dark={dark} showsChevron />
-                </Pressable>
+                </Tappable>
               )}
             </MenuTrigger>
           ) : current ? (
@@ -92,9 +95,9 @@ export function DuoSidebar({ variant, onClose }: Props) {
         </View>
         <MoreMenu dark={dark} hasTabs={order.length > 0} syncEnabled={status.isEnabled} onCloseAll={confirmCloseAll} />
         {variant === "overlay" ? (
-          <Pressable accessibilityRole="button" accessibilityLabel="Hide Sidebar" onPress={onClose} style={styles.headerButton}>
-            <SidebarGlyph size={DUO.sidebarGlyph} color={rolesFor(dark).foregroundPrimary} />
-          </Pressable>
+          <Tappable kind="icon" label="Hide Sidebar" onPress={onClose} style={styles.headerButton}>
+            <Symbol name={iconRoles.sidebar} size={DUO.sidebarGlyph} color={rolesFor(dark).foregroundPrimary} />
+          </Tappable>
         ) : null}
       </View>
       <View style={styles.fieldRow}>
@@ -106,24 +109,28 @@ export function DuoSidebar({ variant, onClose }: Props) {
   );
 }
 
+const noop = () => undefined;
+
 function MoreMenu({ dark, hasTabs, syncEnabled, onCloseAll }: { dark: boolean; hasTabs: boolean; syncEnabled: boolean; onCloseAll: () => void }) {
   const canReopen = useCanReopen();
+  const updateDot = useUpdateDot();
   const items: MenuItem[] = [
-    { label: "Archive", onPress: openArchive },
-    ...(syncEnabled ? [{ label: "Spaces From Your Mac", onPress: openSpaces }] : []),
+    { label: destinationWords.archive, icon: "archivebox", onPress: openArchive },
+    ...(syncEnabled ? [{ label: destinationWords.spaces, icon: "macAndPhone" as const, onPress: openSpaces }] : []),
     "divider",
-    { label: "New Incognito Tab", onPress: newIncognitoTab },
-    ...(canReopen ? [{ label: "Reopen Closed Tab", onPress: reopenLastClosed }] : []),
-    ...(hasTabs ? [{ label: "Close All Tabs", destructive: true, onPress: onCloseAll }] : []),
+    { label: actionWords.newIncognitoTab, icon: "eyes", onPress: newIncognitoTab },
+    ...(canReopen ? [{ label: "Reopen Closed Tab", icon: "arrowUturnBackward" as const, onPress: reopenLastClosed }] : []),
+    ...(hasTabs ? [{ label: "Close All Tabs", icon: "xmark" as const, destructive: true, onPress: onCloseAll }] : []),
     "divider",
-    { label: "Settings", onPress: () => openSettings() },
+    { label: destinationWords.settings, icon: "gearshape", dot: updateDot, onPress: () => openSettings() },
   ];
   return (
     <MenuTrigger frost={null} items={items} trigger="tap" fixedOrder haptic={menuOpenedHaptic} dark={dark} place={{ width: tabsLayout.menuWidth }}>
       {({ onPress }) => (
-        <Pressable testID="duoSidebarMore" accessibilityRole="button" accessibilityLabel="More" onPress={onPress} style={styles.headerButton}>
-          <Symbol name="ellipsis" size={DUO.sidebarMoreGlyph} color={rolesFor(dark).foregroundPrimary} />
-        </Pressable>
+        <Tappable testID="duoSidebarMore" kind="icon" label={withUpdateWords(actionWords.more, updateDot)} onPress={onPress ?? noop} style={styles.headerButton}>
+          <Symbol name={iconRoles.more} size={DUO.sidebarMoreGlyph} color={rolesFor(dark).foregroundPrimary} />
+          {updateDot ? <NoticeDot style={dotBesideGlyph(DUO.hitTarget)} /> : null}
+        </Tappable>
       )}
     </MenuTrigger>
   );
@@ -131,26 +138,12 @@ function MoreMenu({ dark, hasTabs, syncEnabled, onCloseAll }: { dark: boolean; h
 
 function AddressField({ dark, onClose }: { dark: boolean; onClose: () => void }) {
   const tab = useSelectedTab();
-  const address = tab ? barAddress(tab) : null;
   const edit = () => {
     onClose();
     if (tab) editPageQuery();
     else newTab();
   };
-  return (
-    <ChromeSurface testID="duoSidebarAddress" shape="rounded" cornerRadius={controlRadius(DUO.sidebarFieldHeight)} dark={dark} style={styles.field}>
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel="Address"
-        accessibilityValue={{ text: spokenAddress(address) }}
-        accessibilityHint="Opens search with this page’s address."
-        onPress={edit}
-        style={styles.fieldHit}
-      >
-        <HostLabel address={address} dark={dark} />
-      </Pressable>
-    </ChromeSurface>
-  );
+  return <DuoAddressField layout="sidebar" tab={tab} dark={dark} onPress={edit} />;
 }
 
 function SpacePages({ spaces, current, showsTiles, dark, onChoose, onClose }: { spaces: SyncedProfile[]; current: SyncedProfile | null; showsTiles: boolean; dark: boolean; onChoose: (id: string) => void; onClose: () => void }) {
@@ -176,7 +169,7 @@ function SpacePages({ spaces, current, showsTiles, dark, onChoose, onClose }: { 
     <>
       <View style={styles.pages} onLayout={(event) => setWidth(event.nativeEvent.layout.width)}>
         {width > 0 ? (
-          <FlatList
+          <FlatList overScrollMode="never"
             ref={pager}
             testID="duoSidebarPager"
             data={spaces}
@@ -220,7 +213,7 @@ function SpaceList({ space, isCurrent, showsTiles, dark, onClose }: { space: Syn
   const selected = useSelectedTab();
   const tiles = showsTiles ? (space?.pinned.tiles ?? []) : [];
   return (
-    <ScrollView testID="duoSidebarList" style={styles.pages} contentContainerStyle={styles.list} showsVerticalScrollIndicator={false}>
+    <ScrollView bounces={false} overScrollMode="never" testID="duoSidebarList" style={styles.pages} contentContainerStyle={styles.list} showsVerticalScrollIndicator={false}>
       {tiles.length && space ? <SidebarTiles tiles={tiles} profileId={space.syncId} dark={dark} onClose={onClose} /> : null}
       <Text accessibilityRole="header" style={[font.subheadline, styles.heading, { color: roles.secondaryLabel }]}>
         Today
@@ -238,10 +231,10 @@ function SpaceList({ space, isCurrent, showsTiles, dark, onClose }: { space: Syn
           onCloseTab={() => closeTabFromDeck(tab.id)}
         />
       ))}
-      <Pressable
+      <Tappable
         testID="duoSidebarNewTab"
-        accessibilityRole="button"
-        accessibilityLabel="New Tab"
+        kind="row"
+        label={actionWords.newTab}
         onPress={() => {
           onClose();
           newTab();
@@ -249,10 +242,10 @@ function SpaceList({ space, isCurrent, showsTiles, dark, onClose }: { space: Syn
         style={styles.newTab}
       >
         <View style={styles.rowIcon}>
-          <Symbol name="plus" size={DUO.sidebarPlusGlyph} color={roles.secondaryLabel} />
+          <Symbol name={iconRoles.newTab} size={DUO.sidebarPlusGlyph} color={roles.secondaryLabel} />
         </View>
-        <Text style={[font.body, { color: roles.secondaryLabel }]}>New Tab</Text>
-      </Pressable>
+        <Text style={[font.body, { color: roles.secondaryLabel }]}>{actionWords.newTab}</Text>
+      </Tappable>
     </ScrollView>
   );
 }
@@ -261,11 +254,12 @@ function TabRow({ tab, dark, selected, onOpen, onCloseTab }: { tab: BrowserTab; 
   const roles = rolesFor(dark);
   const title = tabTitle(tab);
   const host = barAddress(tab).host;
+  const rowHitStyle = usePressStyle("text", { style: styles.rowHit });
   return (
-    <MenuTrigger frost={null} items={[{ label: "Close Tab", destructive: true, onPress: onCloseTab }]} haptic={menuOpenedHaptic} dark={dark} place={{ width: tabsLayout.menuWidth }} style={styles.rowPitch}>
+    <MenuTrigger frost={null} items={[{ label: CLOSE_TAB, icon: "xmark", destructive: true, onPress: onCloseTab }]} haptic={menuOpenedHaptic} dark={dark} place={{ width: tabsLayout.menuWidth }} style={styles.rowPitch}>
       {({ onLongPress }) => (
         <View testID={`duoSidebarRow:${tab.id}`} style={styles.row}>
-          {selected ? <ChromeSurface testID="duoSidebarRowGlass" shape="rounded" cornerRadius={DUO.sidebarRowRadius} interactive={false} dark={dark} style={StyleSheet.absoluteFill} /> : null}
+          {selected ? <ChromeSurface testID="duoSidebarRowGlass" shape="rounded" cornerRadius={DUO.sidebarRowRadius} interactive={false} incognito={tab.isPrivate} dark={dark} style={StyleSheet.absoluteFill} /> : null}
           <Pressable
             accessibilityRole="button"
             accessibilityLabel={title}
@@ -273,7 +267,7 @@ function TabRow({ tab, dark, selected, onOpen, onCloseTab }: { tab: BrowserTab; 
             accessibilityState={{ selected }}
             onPress={onOpen}
             onLongPress={onLongPress}
-            style={styles.rowHit}
+            style={rowHitStyle}
           >
             <View style={styles.rowIcon}>{tab.isPrivate ? <IncognitoSpecs size={DUO.sidebarPrivateGlyph} color={roles.secondaryLabel} /> : <Favicon iconUrl={tab.faviconUrl} pageUrl={tab.url || null} size={DUO.sidebarRowIcon} />}</View>
             <Text numberOfLines={1} style={[font.body, styles.rowTitle, { color: roles.foregroundPrimary }]}>
@@ -281,9 +275,9 @@ function TabRow({ tab, dark, selected, onOpen, onCloseTab }: { tab: BrowserTab; 
             </Text>
           </Pressable>
           {selected ? (
-            <Pressable testID="duoSidebarRowClose" accessibilityRole="button" accessibilityLabel="Close Tab" onPress={onCloseTab} style={styles.rowClose}>
+            <Tappable testID="duoSidebarRowClose" kind="icon" label={CLOSE_TAB} onPress={onCloseTab} style={styles.rowClose}>
               <Symbol name="xmark" size={DUO.sidebarCloseGlyph} color={roles.secondaryLabel} />
-            </Pressable>
+            </Tappable>
           ) : null}
         </View>
       )}
@@ -315,14 +309,15 @@ function SidebarTiles({ tiles, profileId, dark, onClose }: { tiles: PinnedTile[]
 function SidebarTile({ tile, dark, onOpen }: { tile: PinnedTile; dark: boolean; onOpen: (tab: { url: string; title: string; key: string }) => void }) {
   const folder = tile.folder?.length ? tile.folder : null;
   const label = remoteTitle(tile.title, tile.url);
+  const incognito = useTabPrivate(useSelectedTab());
   const face = (onPress: () => void) => (
-    <Pressable accessibilityRole="button" accessibilityLabel={label} accessibilityHint={folder ? "Shows the folder’s tabs." : undefined} onPress={onPress} style={styles.tileSlot}>
-      <ChromeSurface testID="duoSidebarTile" shape="rounded" cornerRadius={startLayout.tileRadius} dark={dark} style={styles.tile}>
+    <Tappable kind="icon" label={label} hint={folder ? "Shows the folder’s tabs." : undefined} onPress={onPress} style={styles.tileSlot}>
+      <ChromeSurface testID="duoSidebarTile" shape="rounded" cornerRadius={startLayout.tileRadius} incognito={incognito} dark={dark} style={styles.tile}>
         <View pointerEvents="none" style={folder ? styles.folderInk : null}>
           {folder ? <Symbol name="folderFill" size={startLayout.tileIcon * startLayout.folderIconShare} color={rolesFor(dark).formAccent} /> : <Favicon iconUrl={null} pageUrl={tile.url} size={startLayout.tileIcon} />}
         </View>
       </ChromeSurface>
-    </Pressable>
+    </Tappable>
   );
   if (!folder) return face(() => onOpen(tile));
   return (
@@ -345,7 +340,7 @@ function PageDots({ count, index, dark }: { count: number; index: number; dark: 
 
 const styles = StyleSheet.create({
   fill: { flex: 1 },
-  overlayFill: { borderRadius: DUO.sidebarRadius, borderCurve: "continuous", boxShadow: duoInk.sidebarShadow },
+  overlayFill: { borderRadius: DUO.sidebarRadius, ...smoothCorners },
   header: {
     height: DUO.sidebarHeaderHeight,
     flexDirection: "row",
@@ -358,18 +353,16 @@ const styles = StyleSheet.create({
   semibold: { fontWeight: "600" },
   headerButton: { width: DUO.hitTarget, height: DUO.hitTarget, alignItems: "center", justifyContent: "center" },
   fieldRow: { paddingHorizontal: DUO.sidebarPadding },
-  field: { height: DUO.sidebarFieldHeight },
-  fieldHit: { flex: 1, paddingHorizontal: DUO.sidebarFieldPadding, justifyContent: "center", alignItems: "flex-start" },
   pages: { flex: 1 },
   list: { paddingHorizontal: DUO.sidebarPadding, paddingBottom: DUO.sidebarPadding },
   heading: { fontWeight: "500", paddingLeft: DUO.sidebarHeadingLead, paddingTop: DUO.sidebarHeadingTop, paddingBottom: DUO.sidebarHeadingBottom },
   rowPitch: { height: DUO.sidebarRowPitch, justifyContent: "center" },
-  row: { height: DUO.sidebarRowHeight, flexDirection: "row", alignItems: "center", borderRadius: DUO.sidebarRowRadius },
+  row: { height: DUO.sidebarRowHeight, flexDirection: "row", alignItems: "center", borderRadius: DUO.sidebarRowRadius, ...smoothCorners },
   rowHit: { flex: 1, height: DUO.sidebarRowHeight, flexDirection: "row", alignItems: "center", gap: DUO.sidebarRowGap, paddingLeft: DUO.sidebarRowLead },
   rowIcon: { width: DUO.sidebarRowIcon, alignItems: "center", justifyContent: "center" },
   rowTitle: { flexShrink: 1 },
   rowClose: { width: DUO.sidebarRowClose, height: DUO.sidebarRowHeight, alignItems: "center", justifyContent: "center" },
-  newTab: { height: DUO.sidebarRowPitch, flexDirection: "row", alignItems: "center", gap: DUO.sidebarRowGap, paddingLeft: DUO.sidebarRowLead },
+  newTab: { height: DUO.sidebarRowPitch, flexDirection: "row", alignItems: "center", gap: DUO.sidebarRowGap, paddingLeft: DUO.sidebarRowLead, borderRadius: DUO.sidebarRowRadius, ...smoothCorners },
   tiles: { paddingTop: DUO.sidebarPadding, gap: startLayout.tileGap },
   tileRow: { flexDirection: "row", gap: startLayout.tileGap },
   tileSlot: { flex: 1 },

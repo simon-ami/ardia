@@ -26,7 +26,7 @@ const LIGHT: typeof DARK = {
   swipeSelection: "rgba(0,0,0,0.1)",
 };
 
-export type WindowColors = typeof DARK;
+type WindowColors = typeof DARK;
 
 export const windowColors = (dark: boolean): WindowColors => (dark ? DARK : LIGHT);
 
@@ -87,12 +87,14 @@ export const SWIPE_MOTION = {
   dismiss: { duration: duration.base, easing: curve.exit },
 } as const;
 
+export const TAB_SWIPE = { distance: 16 } as const;
+
 export const SWIPE_PILL_SPRING = { response: 0.27, damping: 0.9 } as const;
 
 export const DOCK_SLIDE_CURVE = [0.42, 0, 0.58, 1] as const;
 export const DOCK_SLIDE = { duration: 200, easing: Easing.bezier(...DOCK_SLIDE_CURVE) } as const;
 
-export const ARC_PEEK_SPRING = { response: 0.18, damping: 0.8 } as const;
+export const PEEK_IN_MS = duration.base;
 export const ARC_PEEK_OUT_MS = 150;
 export const ARC_HIDE_MS = duration.fast;
 

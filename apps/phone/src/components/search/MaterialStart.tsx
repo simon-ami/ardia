@@ -12,8 +12,12 @@ import { ArdiaLogo, Backdrop, browseLayout, MaterialIconButton, useReduceMotion,
 import { MaterialBottomBar } from "../ui/MaterialBottomBar";
 import { useMaterialTheme } from "../ui/materialTheme";
 import { materialBottomBar, materialDuration, materialMotion, materialMove, materialSize, materialType } from "../ui/materialTokens";
+import { StartMark } from "./StartSpaces";
 import { reducedMotionMs } from "../ui/motion";
 import type { MaterialScheme } from "../../lib/material/schemes";
+import { actionWords, destinationWords } from "../../lib/sharedWords";
+import { dotBesideGlyph, NoticeDot, withUpdateWords } from "../settings/UpdateDot";
+import { useUpdateDot } from "../../state/appUpdate/store";
 
 export const materialStartMs = (reduceMotion: boolean, searching: boolean) =>
   reduceMotion ? reducedMotionMs(materialDuration.short3) : searching ? materialMotion.fadeThroughOut.durationMs : materialMotion.fadeThroughIn.durationMs;
@@ -23,6 +27,7 @@ export function MaterialStart() {
   const { scheme } = useMaterialTheme(incognito);
   const theme = useTheme();
   const insets = useSafeAreaInsets();
+  const updateDot = useUpdateDot();
   const searching = useSearchOpen();
   const hasTabs = useHasTabs();
   const canReopen = useCanReopen();
@@ -41,8 +46,8 @@ export function MaterialStart() {
   const leading: { icon: SymbolName; label: string; onPress: () => void } = hasTabs
     ? { icon: "squareOnSquare", label: "Tabs", onPress: showDeck }
     : syncs
-      ? { icon: "laptop", label: "Synced Tabs", onPress: openSpaces }
-      : { icon: "archivebox", label: "Archive", onPress: openArchive };
+      ? { icon: "laptop", label: destinationWords.spaces, onPress: openSpaces }
+      : { icon: "archivebox", label: destinationWords.archive, onPress: openArchive };
   return (
     <View testID="materialStart" style={StyleSheet.absoluteFill}>
       {incognito ? <View testID="materialStartBackdrop" style={[StyleSheet.absoluteFill, { backgroundColor: scheme.surface }]} /> : <Backdrop colors={theme.start.colors} />}
@@ -57,23 +62,23 @@ export function MaterialStart() {
         <StartIconButton icon={leading.icon} label={leading.label} scheme={scheme} onPress={leading.onPress} />
         <View style={styles.fill} />
         {incognito ? (
-          <StartIconButton icon="plus" label="New Tab" scheme={scheme} onPress={newRegularTab} />
+          <StartIconButton icon="plus" label={actionWords.newTab} scheme={scheme} onPress={newRegularTab} />
         ) : (
-          <StartIconButton icon="eyes" label="New Incognito Tab" scheme={scheme} onPress={newIncognitoTab} />
+          <StartIconButton icon="eyes" label={actionWords.newIncognitoTab} scheme={scheme} onPress={newIncognitoTab} />
         )}
         {canReopen && !incognito ? <StartIconButton icon="arrowUturnBackward" label="Reopen Closed Tab" scheme={scheme} onPress={reopenLastClosed} /> : null}
-        <StartIconButton icon="gearshape" label="Settings" scheme={scheme} onPress={() => openSettings()} />
+        <StartIconButton icon="gearshape" label={destinationWords.settings} scheme={scheme} dot={updateDot} onPress={() => openSettings()} />
       </Animated.View>
       <Animated.View
         testID="materialStartCenter"
-        pointerEvents="none"
+        pointerEvents={hasTabs || searching ? "none" : "box-none"}
         collapsable={false}
         importantForAccessibility={searching ? "no-hide-descendants" : "auto"}
         accessibilityElementsHidden={searching}
         style={[styles.center, { paddingLeft: side, paddingRight: side }, fade]}
       >
-        <View pointerEvents="none" style={styles.logo}>
-          <ArdiaLogo width={browseLayout.logoWidth} />
+        <View pointerEvents="box-none" style={styles.logo}>
+          {hasTabs ? <ArdiaLogo width={browseLayout.logoWidth} /> : <StartMark incognito={incognito} />}
           {incognito ? <Text style={[materialType.titleMedium, { color: ink }]}>You’re browsing Incognito</Text> : null}
         </View>
       </Animated.View>
@@ -97,8 +102,15 @@ export function MaterialStart() {
   );
 }
 
-function StartIconButton({ icon, label, scheme, onPress }: { icon: SymbolName; label: string; scheme: MaterialScheme; onPress: () => void }) {
-  return <MaterialIconButton testID={`materialStart:${label}`} icon={icon} label={label} scheme={scheme} onPress={onPress} />;
+function StartIconButton({ icon, label, scheme, dot = false, onPress }: { icon: SymbolName; label: string; scheme: MaterialScheme; dot?: boolean; onPress: () => void }) {
+  const button = <MaterialIconButton testID={`materialStart:${label}`} icon={icon} label={withUpdateWords(label, dot)} scheme={scheme} onPress={onPress} />;
+  if (!dot) return button;
+  return (
+    <View>
+      {button}
+      <NoticeDot style={dotBesideGlyph(materialSize.touchTarget)} />
+    </View>
+  );
 }
 
 const styles = StyleSheet.create({

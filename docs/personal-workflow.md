@@ -92,8 +92,7 @@ which can be the Release build when that is the shortest useful route.
    Release or builds one, prepares the matching CLI without activating it, and signs the candidate with
    the existing personal signing certificate. During an uncommitted update merge, it matches the staged engine tree;
    unstaged or untracked engine files block prebuilt lookup. It bundles JavaScript; the delivered app never depends on Metro.
-   If needed, request the signing password through the private secret tool. Never put it in logs, arguments,
-   Git, or a persistent script. Use one private password file within the task; remove that temporary file when done.
+   If needed, request the signing keychain or `.p12` encryption password (saved in the user's Bitwarden Login item, not the Base64 `.p12` file text) through the private secret tool, and never put it in logs, arguments, Git, or a persistent script. Use one private password file within the task, remove that temporary file when done, and if a one-shot secret file expires during a long Release compile, finish with `--sign-only` without rebuilding.
 2. Run the relevant automated checks and a hidden scratch launch. Check the new signed build record and
    any affected personal-build invariants. Read [personal-app.md](personal-app.md) for storage details.
    `--sign-only` is only for a recorded build whose inputs and program files still match.
@@ -174,10 +173,11 @@ Snapshots and the original migration backup stay private and out of Git. Do not 
 
 Preserve README fork notice `2286d63b`, PR CI workflow `84beb05f`, and the personal-build feature record.
 Starting point after setup: fork `main` at `9d18a24e`.
-The installed update targets `v0.2.48`, commit `6b1bcbaca49e766a3be05c6e7c52d57a69c0bd0d`.
-The signed app uses Chromium `158.0.8127.36`, engine key `f910adbf8042b7c3f297ce0dd352a35f85aef2c4`.
-The paired CLI and managed skill use upstream `0.6.0` through `ardia-personal`. All eight custom features remain active.
-Typechecks (11 packages + Linux typecheck and module graph), 203 focused browser checks, personal engine/lifecycle/path checks,
-and a hidden candidate launch passed.
-Installation snapshot: `20261122-232006-197c1da7`.
-The user confirmed restored tabs, an existing login, Control-Tab previews, Unload Tab with reload on selection, and Peek scrolling.
+The installed update targets `v0.2.49`, commit `2763e843ef099bfe511a3278ace3142fe7924e13`.
+The signed app uses Chromium `158.0.8127.88`, engine tree `ec8b1f6a18488d7f85fff5fa6b7265cf349abffa`.
+The paired CLI and managed skill use upstream `0.7.0` through `ardia-personal`. All eight custom features remain active.
+Workspace and desktop typechecks, desktop graph/host checks, focused browser checks, portable package/Mac checks,
+personal engine/lifecycle/path checks, signature verification, and a hidden candidate launch passed.
+Installation snapshot: `20261127-173559-c63bb3ad`.
+The user accepted the installed update and requested manual checks: profile/logins, Control-Tab previews,
+Unload Tab with reload on selection, and cross-section close MRU. Optional CLI and extended feature checks remain unconfirmed.

@@ -5,13 +5,15 @@ import { currentPreferences } from "../settings/store";
 import { currentTabs, useTabs } from "../tabs/store";
 import { idleMacTabs, macTabIndex, mergeSyncedHistory, syncedBookmarks } from "../sync/spaces";
 import { selectedProfile, syncData } from "../sync/store";
-import { idleRows, remoteSuggestions, setSearchEngine, setSources, setSyncedSearch, suggest, type SuggestContext, type TrayRow } from "./omnibox";
+import { idleRows, remoteSuggestions, searchEngineRevision, setSearchEngine, setSources, setSyncedSearch, suggest, withCurrentEngine, type SuggestContext, type TrayRow } from "./omnibox";
 import { withPasteRow, type PasteOffer } from "./pasteRow";
 import { clipboardOffer } from "../../platform/system";
 import { settled } from "../pages/store";
-import { buildSources, recentSearches, sourcesKey } from "./sources";
+import { buildSources, recentSearches, searchKey, searchesByQuery, sourcesKey } from "./sources";
 import { spaceTabs } from "../tabs/tabsState";
 import { browseForMeOffered } from "../browseForMe/offer";
+import { markSearchClosing, markSearchPhase, markSearchPressed } from "./searchTiming";
+import { countUsage } from "../telemetry/telemetry";
 
 export type SearchOrigin = "home" | "start" | "page";
 
@@ -58,28 +60,123 @@ let context: SuggestContext = { currentUrl: null, currentTabId: null };
 let paste: PasteOffer | null = null;
 let pasteReadIn: number | null = null;
 
-export function feedSources() {
-  const key = `${sourcesKey(useTabs.getState().listing, history().revision(), syncData().revision)}:${useTabs.getState().spaces.current}`;
+const currentSourcesKey = () => `${sourcesKey(useTabs.getState().listing, history().revision(), syncData().revision)}:${useTabs.getState().spaces.current}`;
+
+let clearsPagePrefill = false;
+let refreshFallback: ReturnType<typeof setTimeout> | null = null;
+let pendingRefresh: (() => void) | null = null;
+let preparing: ReturnType<typeof setTimeout> | null = null;
+
+export const setSearchClearsPagePrefill = (clears: boolean) => {
+  clearsPagePrefill = clears;
+};
+
+const SEARCH_WARM_AFTER_LAUNCH_MS = 1500;
+const REFRESH_WITHOUT_PRESENTATION_MS = 300;
+const IDLE_SCOPES_KEPT = 8;
+
+type IdleRows = { revision: string; engine: number; rows: TrayRow[] };
+const idleMade = new Map<string, IdleRows>();
+
+const idleScope = () => `${useTabs.getState().incognito}:${useTabs.getState().spaces.current}:${selectedProfile()?.syncId ?? ""}`;
+const idleRevision = () => `${history().revision()}:${syncData().revision}:${searchEngineRevision()}`;
+const idleIsCurrent = () => idleMade.get(idleScope())?.revision === idleRevision();
+
+function idleRowsNow(): TrayRow[] {
+  const scope = idleScope();
+  const made = idleMade.get(scope);
+  if (made && made.revision === idleRevision()) return made.rows;
+  const rows = useTabs.getState().incognito ? [] : markPastSearches(idleRows(recentSearches(history().summary()), idleMacTabs(selectedProfile(), syncData().view.devices)));
+  idleMade.delete(scope);
+  idleMade.set(scope, { revision: idleRevision(), engine: searchEngineRevision(), rows });
+  if (idleMade.size > IDLE_SCOPES_KEPT) idleMade.delete(idleMade.keys().next().value!);
+  return rows;
+}
+
+export const preparedIdleRows = (): TrayRow[] => withPasteRow(idleRowsNow(), "", paste);
+
+export const preparedIdleKey = () => `${idleScope()}|${idleRevision()}|${paste === null ? "" : "paste"}`;
+
+function rowsAtPress(text: string): TrayRow[] {
+  if (text.trim()) return rowsFor(text, []);
+  const made = idleMade.get(idleScope());
+  const rows = !made ? [] : made.engine === searchEngineRevision() ? made.rows : withCurrentEngine(made.rows);
+  return withPasteRow(rows, text, paste);
+}
+
+export function searchPresented(session: number) {
+  if (useSearch.getState().session !== session) return;
+  const refresh = pendingRefresh;
+  pendingRefresh = null;
+  if (refreshFallback !== null) clearTimeout(refreshFallback);
+  refreshFallback = null;
+  refresh?.();
+}
+
+export function prepareSearch() {
+  if (preparing !== null) return;
+  preparing = setTimeout(() => {
+    preparing = null;
+    if (useSearch.getState().open) return;
+    feedSources();
+    idleRowsNow();
+  }, 0);
+}
+
+export function warmSearchWhenIdle(): () => void {
+  const warm = setTimeout(prepareSearch, SEARCH_WARM_AFTER_LAUNCH_MS);
+  return () => clearTimeout(warm);
+}
+
+function refreshAfterOpening(session: number) {
+  const sourcesStale = currentSourcesKey() !== fedSources;
+  const idleStale = !idleIsCurrent();
+  if (!sourcesStale && !idleStale) return;
+  const pressed = useSearch.getState().rows;
+  if (refreshFallback !== null) clearTimeout(refreshFallback);
+  pendingRefresh = () => {
+    const state = useSearch.getState();
+    if (!state.open || state.session !== session) return;
+    const shown = useSearch.getState();
+    if (shown.rows !== pressed) {
+      if (sourcesStale) feedSourcesQuietly();
+      return;
+    }
+    if (sourcesStale) feedSourcesQuietly();
+    if (shown.text.trim()) useSearch.setState({ rows: suggestionsFor(shown.text, remote.text && shown.text.startsWith(remote.text) ? remote.values : []).rows });
+    else useSearch.setState({ rows: rowsFor(shown.text, []) });
+  };
+  refreshFallback = setTimeout(() => searchPresented(session), REFRESH_WITHOUT_PRESENTATION_MS);
+}
+
+function feedSourcesQuietly() {
+  const key = currentSourcesKey();
   if (key === fedSources) return;
   fedSources = key;
   const profile = selectedProfile();
   const local = history().summary();
   setSources(buildSources(spaceTabs(currentTabs()), profile ? mergeSyncedHistory(local, profile.history) : local, profile ? syncedBookmarks(profile) : []));
+}
+
+export function feedSources() {
+  if (currentSourcesKey() === fedSources) return;
+  feedSourcesQuietly();
   const shown = useSearch.getState();
   if (shown.open && !shown.text.trim()) useSearch.setState({ rows: rowsFor(shown.text, []) });
 }
 
 function suggestionsFor(text: string, remoteValues: readonly string[]): { rows: TrayRow[]; completion: string } {
   if (!text.trim()) return { rows: rowsFor(text, remoteValues), completion: "" };
-  return suggest(text, remoteValues, context, macTabIndex(selectedProfile(), syncData().view.devices), browseForMeOffered());
+  const suggested = suggest(text, remoteValues, context, macTabIndex(selectedProfile(), syncData().view.devices), browseForMeOffered());
+  return { ...suggested, rows: markPastSearches(suggested.rows) };
 }
 
 function rowsFor(text: string, remoteValues: readonly string[]): TrayRow[] {
-  const profile = selectedProfile();
-  if (text.trim()) return suggest(text, remoteValues, context, macTabIndex(profile, syncData().view.devices), browseForMeOffered()).rows;
-  const idle = useTabs.getState().incognito ? [] : idleRows(recentSearches(history().summary()), idleMacTabs(profile, syncData().view.devices));
-  return withPasteRow(idle, text, paste);
+  if (text.trim()) return suggestionsFor(text, remoteValues).rows;
+  return withPasteRow(idleRowsNow(), text, paste);
 }
+
+const markPastSearches = (rows: TrayRow[]): TrayRow[] => rows.map((row) => (row.kind === "query" && canForgetSearch(row.query) ? { ...row, past: true } : row));
 
 function offerPaste(session: number) {
   void settled(() => clipboardOffer(), null).then((offer) => {
@@ -110,49 +207,109 @@ export function endPasteRead(session: number, pasted: boolean): boolean {
 
 export const refreshSearchRows = () => useSearch.setState((state) => ({ rows: rowsFor(state.text, []) }));
 
+let searched: { revision: number; byQuery: Map<string, string[]> } | null = null;
+
+function searchedUrls(query: string): readonly string[] {
+  const revision = history().revision();
+  if (searched?.revision !== revision) searched = { revision, byQuery: searchesByQuery(history().summary()) };
+  return searched.byQuery.get(query.trim().toLowerCase()) ?? [];
+}
+
+export const canForgetSearch = (query: string) => searchedUrls(query).length > 0;
+
+export function forgetSearch(query: string) {
+  const forgotten = query.trim().toLowerCase();
+  if (!forgotten || !history().forget((url) => searchKey(url) === forgotten)) return;
+  if (!useTabs.getState().incognito) countUsage("searches_forgotten");
+  feedSources();
+  const { text } = useSearch.getState();
+  if (!text.trim()) return useSearch.setState({ rows: rowsFor(text, []) });
+  const carried = remote.text && text.startsWith(remote.text) ? remote.values.filter((value) => value.trim().toLowerCase() !== forgotten) : [];
+  const suggested = suggestionsFor(text, carried);
+  useSearch.setState({ rows: suggested.rows, completion: suggested.completion, completedFor: text });
+}
+
 export function applySearchEngine() {
   const { status, view } = syncData();
   if (status.isEnabled && view.search) setSyncedSearch(view.search);
   else setSearchEngine(currentPreferences().searchEngineId);
 }
 
+export type SearchPresenting = { text: string; origin: SearchOrigin; incognito: boolean; editsPage: boolean; prepared: string };
+
+let presentsWith: ((presenting: SearchPresenting) => string | null) | null = null;
+
+export function whenSearchPresents(hook: ((presenting: SearchPresenting) => string | null) | null) {
+  presentsWith = hook;
+}
+
 export function presentSearch(origin: SearchOrigin, text = "", incognitoOnCancel: boolean | null = null, page: SuggestContext | null = null, arrival: TrayArrival = "rises") {
+  markSearchPressed();
   beginInteraction("tray open", INTERACTION_WINDOW_MS.trayOpen);
-  inFlight?.abort();
+  dropQueuedDraft();
   remote = { text: "", values: [] };
   context = page ?? { currentUrl: null, currentTabId: null };
   paste = null;
-  feedSources();
+  const editsPage = page?.currentUrl != null;
+  const asked = editsPage && clearsPagePrefill ? "" : text;
+  const adopted = useSearch.getState().open ? null : (presentsWith?.({ text: asked, origin, incognito: useTabs.getState().incognito, editsPage, prepared: preparedIdleKey() }) ?? null);
+  const shownText = asked === "" && adopted ? adopted : asked;
+  if (!shownText.trim() && !idleMade.has(idleScope()) && !useTabs.getState().incognito) countUsage("search_opens_cold");
   useSearch.setState((state) => ({
     open: true,
     ending: "cancelled",
     origin,
     initialText: text,
-    text,
-    rows: rowsFor(text, []),
+    text: shownText,
+    rows: rowsAtPress(shownText),
     completion: "",
     completedFor: "",
     session: state.session + 1,
     fieldVersion: 0,
     incognitoOnCancel,
     arrival,
-    editsPage: page?.currentUrl != null,
+    editsPage,
   }));
+  markSearchPhase("open");
+  if (shownText !== asked) typeSearch(shownText);
   offerPaste(useSearch.getState().session);
+  refreshAfterOpening(useSearch.getState().session);
 }
 
 export function dismissSearch(ending: SearchEnding = "cancelled") {
-  inFlight?.abort();
+  if (useSearch.getState().open) markSearchClosing();
   useSearch.setState({ open: false, ending, incognitoOnCancel: null });
+  paste = null;
+  dropQueuedDraft();
 }
 
 const REMOTE_DELAY_MS = 150;
 
-let typed: string | null = null;
+type Draft = { text: string; session: number; incognito: boolean };
+
+let typed: Draft | null = null;
 let frame: ReturnType<typeof requestAnimationFrame> | null = null;
 let remoteTimer: ReturnType<typeof setTimeout> | null = null;
 
+const draftNow = (text: string): Draft => ({ text, session: useSearch.getState().session, incognito: useTabs.getState().incognito });
+
+const ownsSearch = (draft: Draft) => {
+  const state = useSearch.getState();
+  return state.open && state.session === draft.session && useTabs.getState().incognito === draft.incognito;
+};
+
+function dropQueuedDraft() {
+  if (frame !== null) cancelAnimationFrame(frame);
+  frame = null;
+  typed = null;
+  if (remoteTimer !== null) clearTimeout(remoteTimer);
+  remoteTimer = null;
+  inFlight?.abort();
+}
+
 function showRows(text: string) {
+  const draft = draftNow(text);
+  catchUpSources();
   const carried = remote.text && text.startsWith(remote.text) ? remote.values : [];
   const suggested = suggestionsFor(text, carried);
   useSearch.setState({ text, rows: suggested.rows, completion: suggested.completion, completedFor: text });
@@ -161,10 +318,11 @@ function showRows(text: string) {
   if (!text.trim() || !currentPreferences().searchSuggestions) return;
   remoteTimer = setTimeout(() => {
     remoteTimer = null;
+    if (!ownsSearch(draft)) return;
     const controller = new AbortController();
     inFlight = controller;
     void remoteSuggestions(text, controller.signal).then((outcome) => {
-      if (controller.signal.aborted || useSearch.getState().text !== text) return;
+      if (controller.signal.aborted || !ownsSearch(draft) || useSearch.getState().text !== text) return;
       remote = { text, values: outcome.values };
       const merged = suggestionsFor(text, outcome.values);
       useSearch.setState({ rows: merged.rows, completion: merged.completion, completedFor: text });
@@ -173,14 +331,23 @@ function showRows(text: string) {
 }
 
 export function typeSearch(text: string) {
-  typed = text;
+  typed = draftNow(text);
   if (frame !== null) return;
   frame = requestAnimationFrame(() => {
     frame = null;
     const next = typed;
     typed = null;
-    if (next !== null) showRows(next);
+    if (next !== null && ownsSearch(next)) showRows(next.text);
   });
+}
+
+export function searchFieldText(): string {
+  const { text, session } = useSearch.getState();
+  return typed !== null && typed.session === session ? typed.text : text;
+}
+
+export function settleSearchAsSubmitted() {
+  if (!useSearch.getState().open) useSearch.setState({ ending: "submitted" });
 }
 
 export function setSearchText(text: string) {
@@ -189,6 +356,11 @@ export function setSearchText(text: string) {
   typed = null;
   useSearch.setState((state) => ({ fieldVersion: state.fieldVersion + 1 }));
   showRows(text);
+}
+
+function catchUpSources() {
+  if (pendingRefresh === null) return;
+  feedSourcesQuietly();
 }
 
 export const searchState = () => useSearch.getState();

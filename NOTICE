@@ -8,7 +8,7 @@ with ABSOLUTELY NO WARRANTY; see sections 15 and 16 of LICENSE.
 Ardia's own source files are licensed under the Apache License, Version 2.0 (see LICENSE.Apache-2.0). Apache-2.0 code
 may be combined into a GPL-3.0 work, so they keep that licence on their own.
 
-Corresponding Source: every release's notes on GitHub (https://github.com/mantrakp04/ardia/releases) link the
+Corresponding Source: every release's notes on GitHub (https://github.com/ardia-browser/ardia/releases) link the
 repository at that release's tag, with the engine's patch series and build scripts (engine/, docs/engine-build.md),
 and the release's ArdiaCore-<tree>-source.tar.xz, which holds the Helium sources the engine was built from and says
 where Chromium's source is.
@@ -26,6 +26,21 @@ Ardia builds on and ships third-party software under its own licenses, including
   icons in apps/browser/assets/developer-bar
 - The !bang list by Kagi Search and imput (MIT, see third_party/bangs/LICENSE), from Helium's
   services.helium.imput.net/bangs.json: a snapshot in packages/core/src/bangList.ts
+- liquid-dom by Andras Prifer (MIT, see third_party/liquid-dom/LICENSE), https://github.com/AndrewPrifer/liquid-dom:
+  the phone apps' Liquid Glass lens and rim light are a port of its glass shader's height profile, refraction
+  and specular math (packages/phone/android/src/main/java/com/ardia/phone/LiquidGlass.kt on Android,
+  packages/phone/ios/ArdiaKit/Sources/ArdiaDesign/LiquidGlassShader.swift on iPhone)
+- liquid-glass by Bilal Abdullah Gürşen (MIT, see third_party/liquid-glass/LICENSE), https://github.com/bilalgursen/liquid-glass:
+  its shared WebGL2 glass engine and DOM snapshot, vendored from commit 6b3913ff171ad592a4d8c8b8a9d72fb64647c305 with a
+  leading `// @ts-nocheck` and Ardia's patches (listeners released on WebGL context loss and once no glass is left, no
+  engine built while a lost context awaits restore and views reattached when it does, no cursor-light frames unless a
+  lens asks for it, a press latched on pointerdown to the frontmost glass it began on and let go on window blur, stale GL
+  errors drained before an allocation and a failed or out-of-memory upload falling back one view, canvases rechecked
+  before each copy, image callbacks released on error as on load, an optional still rim key light per lens that
+  never follows the pointer)
+  (third_party/liquid-glass/engine.ts and dom-snapshot.ts), draw the web Liquid Glass
+  of ardia.dev's demo and of the Linux, Windows and pre-Tahoe Mac app; its glass-layer.tsx mount is adapted in
+  packages/demo/src/shims/web/liquidGlass.tsx and apps/desktop/src/shims/web/liquidGlass.tsx
 - React Native and React Native macOS (MIT)
 - Phonon 31M (Apache-2.0), copyright Gradium, https://huggingface.co/gradium/phonon-31m-en, with its voices from
   https://huggingface.co/gradium/phonon-voices (Apache-2.0), run through Gradium's ptts package (MIT or Apache-2.0),

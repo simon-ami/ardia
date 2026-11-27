@@ -1,6 +1,7 @@
 #import "ArdiaPictureInPicture.h"
 #import "ArdiaWebViewInternal.h"
 #import "ArdiaPiPThrowMath.h"
+#import "ArdiaPiPGestureLog.h"
 
 #include <vector>
 
@@ -75,6 +76,7 @@ typedef NS_ENUM(NSInteger, ArdiaPiPEdge) { ArdiaPiPEdgeNone = 0, ArdiaPiPEdgeLef
   NSRect _pullStart;
   BOOL _keepOnTop;
   NSMutableArray *_observers;
+  id _spaceObserver;
   NSTimer *_slide;
   BOOL _animating;
   BOOL _sawDrag;
@@ -119,6 +121,7 @@ typedef NS_ENUM(NSInteger, ArdiaPiPEdge) { ArdiaPiPEdgeNone = 0, ArdiaPiPEdgeLef
 - (void)fitCorners:(BOOL)animated;
 - (void)bendCornersTo:(CGFloat)radius animated:(BOOL)animated;
 - (void)screenChanged;
+- (void)activeSpaceChanged;
 - (NSScreen *)homeScreen;
 - (ArdiaPiPEdge)edgeBeyond;
 - (BOOL)throwFrom:(NSPoint)grab velocity:(NSPoint)velocity;
@@ -179,15 +182,40 @@ typedef NS_ENUM(NSInteger, ArdiaPiPEdge) { ArdiaPiPEdgeNone = 0, ArdiaPiPEdgeLef
 - (void)runButtonSelfTest:(NSString *)button;
 - (void)runHoverSelfTest;
 - (void)devMouse:(NSArray<NSString *> *)args;
+- (NSString *)devMagnify:(NSArray<NSString *> *)args;
 @end
 
 @interface ArdiaPiPZoom : NSObject
-+ (BOOL)handle:(NSEvent *)event;
++ (BOOL)zooms:(NSWindow *)window;
++ (instancetype)forWindow:(NSWindow *)window;
++ (BOOL)enabled;
 + (BOOL)beginEdgeResize:(NSWindow *)window event:(NSEvent *)event;
 + (BOOL)continueEdgeResize:(NSEvent *)event;
++ (BOOL)edgeResizing;
 + (void)devPinch:(NSWindow *)window args:(NSArray<NSString *> *)args;
 + (NSDictionary *)devPinchStats:(NSWindow *)window;
 + (NSString *)devStandInWindow:(NSWindow *)window;
+- (void)pinchBegan;
+- (void)pinchBy:(double)factor at:(NSPoint)pointer;
+- (void)pinchEnded;
+- (void)cancelStandIn;
+- (void)zoomBy:(double)factor at:(NSPoint)pointer ease:(BOOL)ease;
+- (NSInteger)standInNumber;
+- (NSInteger)pinchSession;
+- (NSRect)shownFrame;
+- (void)notePinchUnfocused:(BOOL)unfocused fromOtherApp:(BOOL)fromOtherApp;
+@end
+
+@interface ArdiaPiPZoom (Routing)
++ (BOOL)handle:(NSEvent *)event;
++ (BOOL)handleFromOtherApp:(NSEvent *)event;
++ (BOOL)anyZoomable;
++ (NSWindow *)windowUnder:(NSPoint)pointer;
++ (NSArray<NSDictionary *> *)devWindowsAt:(NSPoint)pointer;
++ (NSDictionary *)devLastPinch;
++ (void)yieldPinchOn:(NSWindow *)window;
++ (void)finishPendingPinch;
++ (void)dropStandInOn:(NSWindow *)window;
 @end
 
 namespace ardia_pip {
@@ -211,6 +239,8 @@ void ActivateWithOnlyPictureInPicture(ArdiaPiPController *controller, BOOL move)
 BOOL ActiveOnlyForPictureInPicture();
 BOOL ThrowEnabled();
 NSPoint PointerOf(NSEvent *event);
+void PinchFromOtherApp(NSEvent *event);
+BOOL FollowsPinchesFromOtherApps();
 ardia_pip_throw::Rect ThrowRect(NSRect r);
 int ScreenIndex(NSScreen *screen);
 std::vector<ardia_pip_throw::Screen> ThrowScreens();

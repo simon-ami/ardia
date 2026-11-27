@@ -7,6 +7,7 @@ import { engineProfile, isIncognitoProfile } from "../browser/model";
 import { useBrowser } from "../browser/store";
 
 const BLOCKED_STATUSES = new Set([403, 429]);
+const MAX_SUGGEST_URL_LENGTH = 2048;
 let nextRequestId = 1;
 
 export const remoteSuggestionsAllowed = (profileId: string) => !isIncognitoProfile(profileId);
@@ -22,7 +23,7 @@ const originOf = (url: string) => {
   }
 };
 
-export function trustedSuggestTemplate(engine: SearchEngine | undefined, profile: string): string | null {
+function trustedSuggestTemplate(engine: SearchEngine | undefined, profile: string): string | null {
   if (!engine) return null;
   const builtIn = BUILT_IN_ENGINES.find((e) => e.id === engine.id);
   if (builtIn) return builtIn.suggestUrl ?? null;
@@ -31,8 +32,8 @@ export function trustedSuggestTemplate(engine: SearchEngine | undefined, profile
   return typeof installed?.suggestUrl === "string" ? installed.suggestUrl : null;
 }
 
-export function suggestUrlAllowed(url: string, template: unknown): boolean {
-  if (typeof template !== "string" || !template.includes("%s")) return false;
+function suggestUrlAllowed(url: string, template: unknown): boolean {
+  if (url.length > MAX_SUGGEST_URL_LENGTH || typeof template !== "string" || !template.includes("%s")) return false;
   const prefix = template.slice(0, template.indexOf("%s"));
   if (!/^https?:\/\/[^/?#\s]+[/?]/i.test(prefix) || !url.startsWith(prefix)) return false;
   const origin = originOf(url);
@@ -49,9 +50,10 @@ export function browserSuggestFetch(profile: string): FetchLike {
     try {
       const reply = await fetchSearchSuggestions(profile, url, id);
       if (reply.stopped || signal.aborted) throw new Error("suggestion request stopped");
-      noteSearchSuggest(reply.status === 200 ? "ok" : BLOCKED_STATUSES.has(reply.status) ? "blocked" : "failed", consent);
+      const blocked = BLOCKED_STATUSES.has(reply.status);
+      noteSearchSuggest(reply.status === 200 ? "ok" : blocked ? "blocked" : "failed", consent);
       const body = reply.body ?? "";
-      return { ok: reply.status === 200 && !!body, text: async () => body };
+      return { ok: reply.status === 200 && !!body, blocked, text: async () => body };
     } finally {
       signal.removeEventListener("abort", stop);
     }

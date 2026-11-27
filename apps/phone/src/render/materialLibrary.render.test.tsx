@@ -1,9 +1,10 @@
 import { Platform, StyleSheet, Text } from "react-native";
+import { Pressable } from "react-native-gesture-handler";
 import { act, type ReactTestInstance } from "react-test-renderer";
 import { predictiveBack } from "@ardia/phone-native";
 import { Surfaces } from "../App";
 import { libraryBackStep, MaterialLibrary, materialLibraryMs } from "../components/library/MaterialLibrary";
-import { DesignProvider } from "../components/ui";
+import { DesignProvider, FloatingMenu } from "../components/ui";
 import { SEEDED_SCHEMES } from "../lib/material/schemes";
 import { setDynamicScheme } from "../state/app/dynamicScheme";
 import * as browse from "../state/browse/store";
@@ -70,7 +71,7 @@ afterEach(() => {
 type Root = ReturnType<typeof renderSurface>;
 const node = (root: Root, id: string) => root.root.findAll((found) => found.props.testID === id && typeof found.type === "string")[0];
 const nodes = (root: Root, id: string) => root.root.findAll((found) => found.props.testID === id && typeof found.type === "string");
-const pressables = (root: Root, id: string) => root.root.findAll((found) => found.props.testID === id && typeof found.props.onPress === "function" && found.props.android_ripple !== undefined);
+const pressables = (root: Root, id: string) => root.root.findAll((found) => found.type === Pressable && found.props.testID === id && typeof found.props.onPress === "function" && found.props.android_ripple !== undefined);
 const pressable = (root: Root, id: string) => pressables(root, id)[0]!;
 const flat = (found: ReactTestInstance | undefined) => StyleSheet.flatten(found?.props.style) ?? {};
 const textNode = (within: ReactTestInstance, text: string) => within.findAll((found) => found.type === Text && found.props.children === text)[0];
@@ -127,6 +128,11 @@ onAndroid("the active tab is labelled in primary over a 3 dp primary indicator w
   expect(node(root, "materialLibrarySearch")).toBeUndefined();
   expect(node(root, "materialLibraryMore")).toBeDefined();
   expect(textOf(root)).toContain("No Downloads");
+  act(() => {
+    pressable(root, "materialLibraryMore").props.onPress({ nativeEvent: { pageX: 0, pageY: 0, locationX: 0, locationY: 0 }, currentTarget: null });
+  });
+  const menu = root.root.findAll((inner) => inner.type === FloatingMenu)[0]!;
+  expect((menu.props.items as { label?: string }[]).map((item) => item.label)).toEqual(["Delete All…"]);
   unmount(root);
 });
 

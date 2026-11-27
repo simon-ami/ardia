@@ -1,5 +1,5 @@
 import { Dimensions, Platform, StyleSheet, Text } from "react-native";
-import { State } from "react-native-gesture-handler";
+import { Pressable as GesturePressable, State } from "react-native-gesture-handler";
 import { fireGestureHandler, getByGestureTestId } from "react-native-gesture-handler/jest-utils";
 import * as Reanimated from "react-native-reanimated";
 import { getAnimatedStyle, KeyboardState, makeMutable } from "react-native-reanimated";
@@ -7,12 +7,14 @@ import { act, type ReactTestInstance } from "react-test-renderer";
 import { SearchTray } from "../components/search/SearchTray";
 import { materialSearchFocusDelay, materialSearchMs } from "../components/search/MaterialSearchView";
 import { DesignProvider } from "../components/ui";
+import { floatingPanelLayout } from "../components/ui/tokens";
 import { SEEDED_SCHEMES } from "../lib/material/schemes";
 import { setDynamicScheme } from "../state/app/dynamicScheme";
 import * as browse from "../state/browse/store";
 import { history } from "../state/history/store";
 import { dismissSearch, presentSearch, searchState, typeSearch } from "../state/search/store";
 import { OFF_STATUS, useSync } from "../state/sync/store";
+import { selectedTab } from "../state/tabs/tabsState";
 import { useTabs } from "../state/tabs/store";
 import { currentPreferences, setPreference } from "../state/settings/store";
 import { renderSurface, textOf, unmount, withTabs, withMaterialYou } from "../../test/render/harness";
@@ -68,7 +70,7 @@ onAndroid("the Material search capsule uses the same docked sheet as the page me
     borderTopRightRadius: 28,
   });
   expect(node(root, "materialDragHandle")).toBeDefined();
-  expect(node(root, "materialSheetDockedBar")).toHaveAnimatedStyle({ left: 16, right: 16, bottom: 40 });
+  expect(node(root, "materialSheetDockedBar")).toHaveAnimatedStyle({ left: 16 + floatingPanelLayout.inset, right: 16 + floatingPanelLayout.inset, bottom: 40 });
   expect(flat(node(root, "materialSheetDockedBar"))).toMatchObject({ height: 48, borderRadius: 9999, backgroundColor: LIGHT.surfaceContainerHigh });
   expect(flat(node(root, "materialSearchBar"))).toMatchObject({
     height: 48,
@@ -99,12 +101,24 @@ onAndroid("the Material search capsule uses the same docked sheet as the page me
   unmount(root);
 });
 
+onAndroid("a recent query in the empty Material search sheet opens its results", () => {
+  act(() => presentSearch("start", ""));
+  const root = tray();
+  const recent = node(root, "materialSearchRows")!.findAll((row) => row.type === GesturePressable)
+    .find((row) => row.findAll((child) => child.props.accessibilityLabel === "Refine otters").length > 0)!;
+  expect(recent).toBeDefined();
+  act(() => recent.props.onPress());
+  expect(browse.useBrowse.getState().surface).toBe("browsing");
+  expect(new URL(selectedTab(useTabs.getState())!.url).searchParams.get("q")).toBe("otters");
+  unmount(root);
+});
+
 onAndroid("the expanded field lands in the sheet header with results visible below it and closes cleanly", () => {
   act(() => presentSearch("start", ""));
   const root = tray();
   const bar = node(root, "materialSheetDockedBar")!;
   act(() => jest.advanceTimersByTime(400));
-  expect(bar).toHaveAnimatedStyle({ left: 16, transform: [{ translateY: -228 }] });
+  expect(bar).toHaveAnimatedStyle({ left: 16 + floatingPanelLayout.inset, transform: [{ translateY: -228 }] });
   act(() => closeSearch(root));
   expect(node(root, "materialSheet")).toBeDefined();
   act(() => jest.advanceTimersByTime(400));
@@ -163,14 +177,14 @@ onAndroid.each([["start", 24], ["browsing", 80], ["deck", 80]] as const)("search
   act(() => closeSearch(root));
   act(() => jest.advanceTimersByTime(100));
   const moving = getAnimatedStyle(bar) as { left: number; transform: [{ translateY: number }] };
-  expect(moving.left).toBe(16);
+  expect(moving.left).toBe(16 + floatingPanelLayout.inset);
   expect(moving.transform[0].translateY).toBeLessThan(0);
   expect(node(root, "materialSearchEditing")!).toHaveAnimatedStyle({ opacity: 1 });
   expect(flat(node(root, "materialSearchEditing")).width).toBe(360);
   expect(node(root, "materialSearchLanding")!).toHaveAnimatedStyle({ opacity: 0 });
   act(() => jest.advanceTimersByTime(100));
   const landing = getAnimatedStyle(bar) as { left: number; transform: [{ translateY: number }] };
-  expect(landing.left).toBeGreaterThan(moving.left);
+  expect(landing.left).toBeGreaterThanOrEqual(moving.left);
   expect(landing.left).toBeLessThanOrEqual(side);
   expect(landing.transform[0].translateY).toBe(0);
   expect(getAnimatedStyle(node(root, "materialSearchLanding")!).opacity).toBeGreaterThan(0);

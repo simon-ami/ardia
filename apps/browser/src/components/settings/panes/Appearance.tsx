@@ -16,6 +16,7 @@ import { PAGE_FRAME } from "../../../lib/windowLayout";
 import { FrameSlider, TabCornersSlider } from "./FrameSlider";
 import { BookmarksBarRow } from "./BookmarksBarSection";
 import { InterfaceSizeControl } from "./InterfaceSize";
+import { WindowButtonsPicker } from "./WindowButtonsPicker";
 import { modePreview, stylePreview } from "../tokens";
 import { APP_ICON_SIZE, appIconChoices, chooseAppIcon } from "../../../state/settings/paneData";
 import { useResource } from "../../../state/settings/resources";
@@ -47,6 +48,11 @@ const SELECTED_TOP_APP: Option<Settings["selectedTopApp"]>[] = [
   { value: "ring", title: "Ring" },
   { value: "fill", title: "Fill only" },
   { value: "outline", title: "Outline only" },
+];
+
+const MINIMALISM_PINNED_ICONS: Option<Settings["minimalismPinnedIcons"]>[] = [
+  { value: "letters", title: "Letters" },
+  { value: "logos", title: "Site Logos" },
 ];
 
 const SIDEBAR_TEXT_SIZES: Option<Settings["sidebarTextSize"]>[] = [
@@ -90,6 +96,7 @@ export function AppearancePane(_place: SettingsPlace) {
   return (
     <View>
       <LookSection />
+      <WindowButtonsPicker />
       <SizeAndTextSection />
       <SwitchingTabsSection />
       <ToolbarSection />
@@ -189,6 +196,7 @@ function ToolbarSection() {
   const placement = useSettings((s) => s.commandBarPlacement);
   const buttons = useSettings((s) => s.addressBarButtons);
   const minimal = useSettings((s) => s.minimalismMode);
+  const pinnedIcons = useSettings((s) => s.minimalismPinnedIcons);
   const place: CommandBarPlace = placement === "field" ? "field" : "centred";
   const addressBarFixed = useHiddenSetting()(setting("appearance.addressBar"));
   const fieldIn = addressBar === "sidebar" && !addressBarFixed ? "sidebar" : "toolbar";
@@ -239,6 +247,9 @@ function ToolbarSection() {
             <PopUp value={buttons} options={ADDRESS_BAR_BUTTONS} onChange={(v) => updateSettings({ addressBarButtons: v })} minWidth={160} />
           </Row>
           <SettingToggle anchor="appearance.minimalismMode" />
+          <Row anchor="appearance.minimalismPinnedIcons">
+            <PopUp value={pinnedIcons} options={MINIMALISM_PINNED_ICONS} onChange={(v) => updateSettings({ minimalismPinnedIcons: v })} minWidth={160} />
+          </Row>
           <BookmarksBarRow />
         </Group>
       </Box>
@@ -326,8 +337,9 @@ const ICON_GRID = { flexDirection: "row", flexWrap: "wrap", columnGap: space.s, 
 const ICON_IMAGE = { width: APP_ICON_SIZE, height: APP_ICON_SIZE } as const;
 
 function IconChoice({ icon, selected, onPress }: { icon: AppIcon; selected: boolean; onPress: () => void }) {
+  const label = icon.flat ? `${icon.name}, flat` : icon.name;
   return (
-    <PictureChoice title={icon.name} selected={selected} onPress={onPress} tooltip={icon.name} size="icon">
+    <PictureChoice title={icon.name} accessibilityLabel={label} selected={selected} onPress={onPress} tooltip={label} size="icon">
       {icon.preview ? <Image source={{ uri: icon.preview }} style={ICON_IMAGE} /> : null}
     </PictureChoice>
   );

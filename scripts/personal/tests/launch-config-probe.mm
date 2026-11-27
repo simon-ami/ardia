@@ -9,6 +9,8 @@ int main(int argc, const char *argv[]) {
     if (!bundle || !environment) return 65;
     ArdiaLaunchConfig *config = [[ArdiaLaunchConfig alloc] initWithEnvironment:environment
                                                                     bundle:bundle
+                                                                 arguments:@[ @"launch-config-probe" ]
+                                                             homeDirectory:NSHomeDirectory()
                                                      signedForDistribution:^BOOL { return NO; }];
     NSData *output = [NSJSONSerialization dataWithJSONObject:config.snapshot options:0 error:nil];
     if (!output) return 66;

@@ -174,73 +174,30 @@ function assignPositions(existing                        )           {
 
 });
 __define("packages/sync/src/scope.ts", function (exports, __require) {
-  __export(exports, "covered", () => covered);
   __export(exports, "ingestSnapshot", () => ingestSnapshot);
   __export(exports, "flush", () => flush);
   __export(exports, "restoreJournal", () => restoreJournal);
   __export(exports, "writtenSeq", () => writtenSeq);
   __export(exports, "pull", () => pull);
-  __export(exports, "compactionDue", () => compactionDue);
   __export(exports, "compact", () => compact);
   __export(exports, "syncScope", () => syncScope);
   __exportAll(exports, __require("packages/sync/src/scopeKeys.ts"));
+  __export(exports, "compactionDue", () => __require("packages/sync/src/compaction.ts")["compactionDue"]);
+  __export(exports, "parseSyncFile", () => __require("packages/sync/src/syncFile.ts")["parseSyncFile"]);
 const { canonical } = __require("packages/sync/src/canon.ts");
 const { hlcWall } = __require("packages/sync/src/hlc.ts");
 const { holdsBack, noteFileHealth } = __require("packages/sync/src/fileHealth.ts");
-const { baseKeysWith, dropBase, dropRecord, putBase, putRecord, visible, withBaseIndex } = __require("packages/sync/src/scopeKeys.ts");
+const { baseKeysWith, baseWritesUnder, dropBase, dropRecord, putBase, putRecord, visible } = __require("packages/sync/src/scopeKeys.ts");
 
-                                                                                                                                         
+const { covered, isApplied, markApplied, raiseApplied } = __require("packages/sync/src/applied.ts");
+const { awaitsRecovery, cancelIfRaced, countReapplied, failedTargets, finishBatch, settleOwedRetirements, startApplying, takeReapplied, writeAhead } = __require("packages/sync/src/applyBatches.ts");
+const { recoverBatches } = __require("packages/sync/src/applyRecovery.ts");
+const { parseSyncFile } = __require("packages/sync/src/syncFile.ts");
+const { DEFAULTS, newestSnapshot, prune, retiredBy, compactionDue } = __require("packages/sync/src/compaction.ts");
 
-const DEFAULTS                                                        = {
-  expired: () => false,
-  tombstoneTTL: 45 * 86_400_000,
-  compactAfterFiles: 40,
-  compactAfterLogs: 400,
-  compactLogShare: 0.25,
-  compactInterval: 10 * 60_000,
-  pruneGrace: 60 * 60_000,
-  damagedGiveUp: 86_400_000,
-};
 
-const isObject = (v         )                               => typeof v === "object" && v !== null && !Array.isArray(v);
-const isCount = (v         )              => typeof v === "number" && Number.isSafeInteger(v) && v >= 0;
-const isTime = (v         )              => typeof v === "number" && Number.isFinite(v);
-const isMapOf = (v         , item                         ) => isObject(v) && Object.values(v).every(item);
-const isOrigin = (v         ) => Array.isArray(v) && v.length === 2 && typeof v[0] === "string" && isCount(v[1]);
-const isValue = (o                         ) => Object.prototype.hasOwnProperty.call(o, "v") && o.v !== undefined;
-const isOp = (v         ) => isObject(v) && typeof v.k === "string" && typeof v.h === "string" && isValue(v);
-const isRecord = (v         ) => isObject(v) && typeof v.h === "string" && isOrigin(v.o) && isValue(v);
+                                                                                                                                 
 
-function parseSyncFile(payload        )                  {
-  let file         ;
-  try {
-    file = JSON.parse(payload);
-  } catch {
-    return null;
-  }
-  if (!isObject(file) || file.v !== 1 || typeof file.device !== "string" || !isTime(file.at)) return null;
-  if (file.kind === "log") return isCount(file.seq) && Array.isArray(file.ops) && file.ops.every(isOp) ? (file           ) : null;
-  if (file.kind === "snapshot") {
-    return isMapOf(file.vv, isCount) && isMapOf(file.seen, isTime) && isMapOf(file.records, isRecord) ? (file                ) : null;
-  }
-  return null;
-}
-
-const covered = (vv                        , [device, seq]        ) => (vv[device] ?? 0) >= seq;
-
-function markApplied(state            , device        , seq        ) {
-  if (covered(state.vv, [device, seq])) return;
-  const extra = new Set(state.extra[device] ?? []);
-  extra.add(seq);
-  let top = state.vv[device] ?? 0;
-  while (extra.delete(top + 1)) top++;
-  state.vv[device] = top;
-  if (extra.size) state.extra[device] = [...extra].sort((a, b) => a - b);
-  else delete state.extra[device];
-}
-
-const isApplied = (state            , [device, seq]        ) =>
-  covered(state.vv, [device, seq]) || (state.extra[device]?.includes(seq) ?? false);
 
 function see(state            , device        , at        ) {
   if (!(device in state.seen) || at > state.seen[device] ) state.seen[device] = at;
@@ -276,15 +233,7 @@ function ingestSnapshot(state            , file              , clock       , cha
       changed.add(key);
     }
   }
-  for (const [device, seq] of Object.entries(file.vv)) {
-    if (seq > (state.vv[device] ?? 0)) {
-      state.vv[device] = seq;
-      const extra = (state.extra[device] ?? []).filter((s) => s > seq);
-      for (let top = seq; extra[0] === top + 1; top++) state.vv[device] = extra.shift() ;
-      if (extra.length) state.extra[device] = extra;
-      else delete state.extra[device];
-    }
-  }
+  for (const [device, seq] of Object.entries(file.vv)) raiseApplied(state, device, seq);
 }
 
 const parseBase = (json                    ) => (json === undefined ? undefined : (JSON.parse(json)           ));
@@ -307,27 +256,49 @@ function settleDurable(state            ) {
                                                             
                                                     
 
-async function changesOf(state            , adapter         , now        ) {
+                                                                         
+const extractedFrom = new WeakMap                                    ();
+
+function unchangedSinceExtracted(state            , adapter         , source                    ) {
+  const last = source && extractedFrom.get(state)?.get(adapter.prefix);
+  return !!last && last.source === source && last.joined === state.joined && last.baseWrites === baseWritesUnder(state, adapter.prefix);
+}
+
+function noteExtracted(state            , adapter         , source                    ) {
+  if (!source) return;
+  let byPrefix = extractedFrom.get(state);
+  if (!byPrefix) extractedFrom.set(state, (byPrefix = new Map()));
+  byPrefix.set(adapter.prefix, { source, baseWrites: baseWritesUnder(state, adapter.prefix), joined: state.joined });
+}
+
+async function changesOf(state            , adapter         , now        , options               = {}) {
   if (adapter.adoptRemoteOnJoin && !state.joined) return null;
+  const source = adapter.extractsOnlyFrom?.();
+  if (unchangedSinceExtracted(state, adapter, source)) return { changes: [], settle: undefined, source: undefined };
   let pending                     = null;
   const queued = (key        ) => (pending ??= new Set([...state.outbox, ...(state.journal ?? []).flatMap((f) => f.ops)].map((op) => op.k))).has(key);
-  const extraction = await adapter.extract((key) => parseBase(state.base[key]), queued, now, (key) => key in state.records, (key) => state.records[key]?.v, (key) => state.records[key]?.h, (key) => state.base[key]);
+  const extractWith = (baseJson                                     ) =>
+    Promise.resolve(adapter.extract((key) => parseBase(baseJson(key)), queued, now, (key) => key in state.records, (key) => state.records[key]?.v, (key) => state.records[key]?.h, baseJson));
+  const first = await extractWith((key) => state.base[key]);
+  const extraction = first && state.applying ? await recoverBatches(state, adapter.prefix, first, adapter.extractUsesBase ? extractWith : null, !!adapter.savesWhole, options) : first;
   if (!extraction) return null;
   const changes           = [];
   const { values, json: knownJson, republish, ignore } = extraction;
+  const unsettled = failedTargets(state, adapter.prefix, options);
   values.forEach((value, key) => {
     if (value === null || value === undefined) throw new Error(`[sync] ${key}: a live value can't be null`);
     const json = knownJson?.(key, value) ?? canonical(value);
-    if (state.base[key] === json && !republish?.(key)) return;
+    if (unsettled?.get(key)?.has(json)) return;
+    if (state.base[key] === json && (!republish?.(key) || awaitsRecovery(state, key))) return;
     changes.push({ key, value, json });
   });
   const keys = baseKeysWith(state, adapter.prefix);
   for (let i = 0; i < keys.length; i++) {
     const key = keys[i] ;
-    if (!(key in state.base) || values.has(key) || ignore?.(key)) continue;
+    if (!(key in state.base) || values.has(key) || ignore?.(key) || unsettled?.get(key)?.has("null")) continue;
     changes.push({ key, value: null, json: "null" });
   }
-  return { changes, settle: extraction.published };
+  return { changes, settle: extraction.published, source };
 }
 
 function stampOf(state            , adapter         , clock       , { key, value }        )      {
@@ -335,14 +306,14 @@ function stampOf(state            , adapter         , clock       , { key, value
   return editedAt !== undefined ? clock.at(editedAt) : clock.tick();
 }
 
-async function candidateStamps(state            , adapter         , clock       , now        )                  {
-  const found = await changesOf(state, adapter, now);
+async function candidateStamps(state            , adapter         , clock       , now        , options               )                  {
+  const found = await changesOf(state, adapter, now, options);
   return new Map((found?.changes ?? []).map((change) => [change.key, { json: change.json, h: stampOf(state, adapter, clock, change) }]));
 }
 
-async function publishAdapter(state            , adapter         , clock       , device        , now        , stamps         )                       {
+async function publishAdapter(state            , adapter         , clock       , device        , now        , options                          , stamps         )                       {
   const published = new Set        ();
-  const found = await changesOf(state, adapter, now);
+  const found = await changesOf(state, adapter, now, options);
   if (!found) return published;
   for (const change of found.changes) {
     const { key, value, json } = change;
@@ -356,6 +327,7 @@ async function publishAdapter(state            , adapter         , clock       ,
     state.outbox.push({ k: key, h, v: value });
     published.add(key);
   }
+  noteExtracted(state, adapter, found.source);
   const { settle } = found;
   if (settle && published.size) settleWhenDurable(state, () => settle(published));
   return published;
@@ -431,7 +403,7 @@ async function pull(state            , transport           , scope        , cloc
   return changed;
 }
 
-async function applyAdapter(state            , adapter         , keys             , now        , horizon        , held               )                   {
+async function applyAdapter(state            , adapter         , keys             , now        , horizon        , held               , deferred             )                   {
   const mine = new Set([...keys].filter((k) => k.startsWith(adapter.prefix)));
   if (!mine.size) return true;
   const view = visible(state, adapter.prefix);
@@ -442,10 +414,19 @@ async function applyAdapter(state            , adapter         , keys           
     else dropBase(state, key);
   };
   const landed = new Set        ();
+  const changing = new Set([...mine].filter((key) => (state.base[key] ?? "null") !== (view.has(key) ? canonical(view.get(key)) : "null")));
   let ok                 = false;
   try {
-    const records = { known: (key        ) => key in state.records, now, horizon, joined: applyAs[adapter.prefix] === "joined", held, landed: (key        ) => void landed.add(key) };
-    ok = await adapter.apply(view, mine, (key) => parseBase(state.base[key]), records);
+    const records = {
+      known: (key        ) => key in state.records,
+      now,
+      horizon,
+      joined: applyAs[adapter.prefix] === "joined",
+      held,
+      landed: (key        ) => void landed.add(key),
+      defer: (key        ) => void (mine.has(key) && deferred.add(key)),
+    };
+    ok = held() ? false : await adapter.apply(view, mine, (key) => parseBase(state.base[key]), records);
   } catch (error) {
     console.warn(`[sync] applying ${adapter.prefix} failed`, error);
   }
@@ -455,12 +436,243 @@ async function applyAdapter(state            , adapter         , keys           
       settle(key);
       keys.delete(key);
     }
+    countReapplied(state, [...landed].filter((key) => mine.has(key)), deferred, changing);
     return false;
   }
   applyAs[adapter.prefix] = "joined";
-  for (const key of mine) settle(key);
+  for (const key of mine) if (!deferred.has(key)) settle(key);
+  countReapplied(state, mine, deferred, changing);
   return true;
 }
+
+async function compact(state            , transport           , scope        , device        , now        , options               = {}, force = false) {
+  const o = { ...DEFAULTS, ...options };
+  if (!force && !compactionDue(state, now, o)) {
+    const own = newestSnapshot(Object.entries(state.files), device);
+    if (own) await prune(state, transport, scope, retiredBy(Object.entries(state.files), own[0], own[1].vv ?? {}, now, o.pruneGrace, "logs")).catch((error) => console.warn("[sync] removing covered files failed", error));
+    return false;
+  }
+  await flush(state, transport, scope, device, now, options);
+  const records                             = {};
+  const tombstoneTTL = Object.keys(state.extra).length ? 2 * o.tombstoneTTL : o.tombstoneTTL;
+  for (const [key, record] of Object.entries(state.records)) {
+    const drop = record.v === null ? now - hlcWall(record.h) > tombstoneTTL : o.expired(key, record.v, now);
+    if (drop) dropRecord(state, key);
+    else records[key] = record;
+  }
+  const vv = { ...state.vv };
+  const file               = { v: 1, kind: "snapshot", device, at: now, vv, seen: { ...state.seen }, records };
+  const payload = JSON.stringify(file);
+  const id = await transport.write(scope, payload);
+  state.files[id] = { d: device, k: "snapshot", vv, at: now, b: payload.length };
+  state.snapshotAt = now;
+  await prune(state, transport, scope, retiredBy(Object.entries(state.files), id, vv, now, o.pruneGrace, "logsAndSnapshots"));
+  return true;
+}
+
+                                                                                                                                         
+
+async function syncScope(args   
+                
+                    
+                       
+                      
+               
+                 
+                     
+                         
+ )                       {
+  const { scope, state, transport, adapters, clock, device, options } = args;
+  const now = args.now ?? Date.now;
+  startApplying(state, now(), options);
+  await settleOwedRetirements(state, options);
+  let published = 0;
+  const stamps = new Map                 ();
+  for (const adapter of adapters) {
+    if (adapter.publishAfterPull) stamps.set(adapter, await candidateStamps(state, adapter, clock, now(), options));
+    else published += (await publishAdapter(state, adapter, clock, device, now(), options)).size;
+  }
+  await flush(state, transport, scope, device, now(), options);
+  const changed = await pull(state, transport, scope, clock, now(), options);
+  const held = holdsBack(state, now(), options?.damagedGiveUp ?? DEFAULTS.damagedGiveUp);
+  const keys = new Set([...state.unapplied, ...changed]);
+  const unapplied           = [];
+  let heldApply = false;
+  let journalFailed = false;
+  const applyHeld = () => !!options?.holdApply?.();
+  for (const adapter of adapters) {
+    const publishLate = async () => {
+      const late = adapter.publishAfterPull && held ? new Set        () : await publishAdapter(state, adapter, clock, device, now(), options, stamps.get(adapter));
+      published += late.size;
+      for (const key of late) keys.delete(key);
+      return late;
+    };
+    const late = await publishLate();
+    for (const key of state.unapplied) if (key.startsWith(adapter.prefix) && !late.has(key)) keys.add(key);
+    heldApply ||= applyHeld();
+    const deferred = new Set        ();
+    const ahead                    = heldApply ? null : await writeAhead(state, adapter.prefix, keys, now(), options);
+    const cancelled = !!ahead?.batch && (await cancelIfRaced(state, ahead.batch, await publishLate(), options));
+    journalFailed ||= !!ahead?.failed;
+    heldApply ||= !!ahead?.failed;
+    const applied = !heldApply && !cancelled && (await applyAdapter(state, adapter, keys, now(), 2 * (options?.tombstoneTTL ?? DEFAULTS.tombstoneTTL), applyHeld, deferred));
+    finishBatch(ahead?.batch ?? null, applied, options);
+    heldApply ||= applyHeld();
+    if (!applied) for (const key of keys) if (key.startsWith(adapter.prefix)) unapplied.push(key);
+    if (applied) for (const key of deferred) unapplied.push(key);
+  }
+  state.unapplied = [...unapplied, ...[...keys].filter((k) => !adapters.some((a) => k.startsWith(a.prefix)))];
+  if (!heldApply && (!state.awaitRemote || Object.keys(state.seen).some((d) => d !== device))) {
+    state.joined = true;
+    delete state.awaitRemote;
+  }
+  await flush(state, transport, scope, device, now(), options);
+  if (journalFailed) throw new Error("[sync] couldn't journal what this cycle was about to apply");
+  const compacted = await compact(state, transport, scope, device, now(), options);
+  const snapshotBytes = compacted ? (newestSnapshot(Object.entries(state.files), device)?.[1].b ?? 0) : 0;
+  return { published, changed: changed.size, pending: state.pending, compacted, snapshotBytes, reapplied: takeReapplied(state) };
+}
+
+});
+__define("packages/sync/src/scopeKeys.ts", function (exports, __require) {
+  __export(exports, "visible", () => visible);
+  __export(exports, "recordsWith", () => recordsWith);
+  __export(exports, "trackTouchedKeys", () => trackTouchedKeys);
+  __export(exports, "baseWritesUnder", () => baseWritesUnder);
+  __export(exports, "putRecord", () => putRecord);
+  __export(exports, "dropRecord", () => dropRecord);
+  __export(exports, "baseKeysWith", () => baseKeysWith);
+  __export(exports, "putBase", () => putBase);
+  __export(exports, "dropBase", () => dropBase);
+                                                              
+
+function visible(state            , prefix        )                       {
+  const out = new Map                 ();
+  const { records } = state;
+  for (const key in records) {
+    if (!key.startsWith(prefix)) continue;
+    const value = records[key] .v;
+    if (value !== null) out.set(key, value);
+  }
+  return out;
+}
+
+function recordsWith(state            , prefix        )                         {
+  const out                         = [];
+  const { records } = state;
+  for (const key in records) if (key.startsWith(prefix)) out.push([key, records[key] ]);
+  return out;
+}
+
+                                                               
+const touching = new WeakMap                              ();
+
+function trackTouchedKeys(state            )                                             {
+  const touched              = { records: new Set(), base: new Set() };
+  let all = touching.get(state);
+  if (!all) touching.set(state, (all = new Set()));
+  all.add(touched);
+  return {
+    touched,
+    stop: () => {
+      all.delete(touched);
+      if (!all.size && touching.get(state) === all) touching.delete(state);
+    },
+  };
+}
+
+function touch(state            , kind                   , key        ) {
+  const all = touching.get(state);
+  if (all) for (const touched of all) touched[kind].add(key);
+}
+
+const baseWrites = new WeakMap                                 ();
+
+function baseWritesUnder(state            , prefix        )         {
+  let counts = baseWrites.get(state);
+  if (!counts) baseWrites.set(state, (counts = new Map()));
+  const count = counts.get(prefix);
+  if (count !== undefined) return count;
+  counts.set(prefix, 0);
+  return 0;
+}
+
+function countBaseWrite(state            , key        ) {
+  baseWrites.get(state)?.forEach((count, prefix, counts) => {
+    if (key.startsWith(prefix)) counts.set(prefix, count + 1);
+  });
+}
+
+function putRecord(state            , key        , record            ) {
+  state.records[key] = record;
+  touch(state, "records", key);
+}
+
+function dropRecord(state            , key        ) {
+  if (!(key in state.records)) return;
+  delete state.records[key];
+  touch(state, "records", key);
+}
+
+                                                                 
+const baseIndexes = new WeakMap                                     ();
+
+function baseKeysWith(state            , prefix        )                    {
+  let byPrefix = baseIndexes.get(state);
+  if (!byPrefix) baseIndexes.set(state, (byPrefix = new Map()));
+  let keys = byPrefix.get(prefix);
+  if (!keys) {
+    const live = new Set        ();
+    for (const key in state.base) if (key.startsWith(prefix)) live.add(key);
+    byPrefix.set(prefix, (keys = { live, listed: null }));
+  }
+  return (keys.listed ??= [...keys.live]);
+}
+
+function putBase(state            , key        , json        ) {
+  const known = state.base[key];
+  if (known === json) return;
+  state.base[key] = json;
+  touch(state, "base", key);
+  countBaseWrite(state, key);
+  if (known !== undefined) return;
+  baseIndexes.get(state)?.forEach((keys, prefix) => {
+    if (!key.startsWith(prefix)) return;
+    keys.live.add(key);
+    keys.listed = null;
+  });
+}
+
+function dropBase(state            , key        ) {
+  if (!(key in state.base)) return;
+  delete state.base[key];
+  touch(state, "base", key);
+  countBaseWrite(state, key);
+  baseIndexes.get(state)?.forEach((keys) => {
+    if (keys.live.delete(key)) keys.listed = null;
+  });
+}
+
+});
+__define("packages/sync/src/compaction.ts", function (exports, __require) {
+  __export(exports, "DEFAULTS", () => DEFAULTS);
+  __export(exports, "newestSnapshot", () => newestSnapshot);
+  __export(exports, "retiredBy", () => retiredBy);
+  __export(exports, "prune", () => prune);
+  __export(exports, "compactionDue", () => compactionDue);
+const { covered } = __require("packages/sync/src/applied.ts");
+                                                                           
+
+const DEFAULTS                                                                                                                      = {
+  expired: () => false,
+  tombstoneTTL: 45 * 86_400_000,
+  compactAfterFiles: 40,
+  compactAfterLogs: 400,
+  compactLogShare: 0.25,
+  compactInterval: 10 * 60_000,
+  pruneGrace: 60 * 60_000,
+  damagedGiveUp: 86_400_000,
+};
 
                                                        
 
@@ -506,188 +718,86 @@ function compactionDue(state            , now        , options               = {
   return logs >= o.compactAfterLogs || logBytes >= o.compactLogShare * (latest?.[1].b ?? 0);
 }
 
-async function compact(state            , transport           , scope        , device        , now        , options               = {}, force = false) {
-  const o = { ...DEFAULTS, ...options };
-  if (!force && !compactionDue(state, now, o)) {
-    const own = newestSnapshot(Object.entries(state.files), device);
-    if (own) await prune(state, transport, scope, retiredBy(Object.entries(state.files), own[0], own[1].vv ?? {}, now, o.pruneGrace, "logs")).catch((error) => console.warn("[sync] removing covered files failed", error));
-    return false;
+
+});
+__define("packages/sync/src/applied.ts", function (exports, __require) {
+  __export(exports, "covered", () => covered);
+  __export(exports, "markApplied", () => markApplied);
+  __export(exports, "isApplied", () => isApplied);
+  __export(exports, "raiseApplied", () => raiseApplied);
+                                                          
+
+const covered = (vv                        , [device, seq]        ) => (vv[device] ?? 0) >= seq;
+
+function sortedIndex(list          , seq        ) {
+  let lo = 0;
+  let hi = list.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    if (list[mid]  < seq) lo = mid + 1;
+    else hi = mid;
   }
-  await flush(state, transport, scope, device, now, options);
-  const records                             = {};
-  const tombstoneTTL = Object.keys(state.extra).length ? 2 * o.tombstoneTTL : o.tombstoneTTL;
-  for (const [key, record] of Object.entries(state.records)) {
-    const drop = record.v === null ? now - hlcWall(record.h) > tombstoneTTL : o.expired(key, record.v, now);
-    if (drop) dropRecord(state, key);
-    else records[key] = record;
-  }
-  const vv = { ...state.vv };
-  const file               = { v: 1, kind: "snapshot", device, at: now, vv, seen: { ...state.seen }, records };
-  const payload = JSON.stringify(file);
-  const id = await transport.write(scope, payload);
-  state.files[id] = { d: device, k: "snapshot", vv, at: now, b: payload.length };
-  state.snapshotAt = now;
-  await prune(state, transport, scope, retiredBy(Object.entries(state.files), id, vv, now, o.pruneGrace, "logsAndSnapshots"));
-  return true;
+  return lo;
 }
 
-                                                                                                                             
-
-async function syncScope(args   
-                
-                    
-                       
-                      
-               
-                 
-                     
-                         
- )                       {
-  return withBaseIndex(args.state, () => syncScopeIndexed(args));
+function markApplied(state            , device        , seq        ) {
+  if (covered(state.vv, [device, seq])) return;
+  const extra = state.extra[device] ?? [];
+  const at = sortedIndex(extra, seq);
+  if (extra[at] !== seq) extra.splice(at, 0, seq);
+  let top = state.vv[device] ?? 0;
+  let taken = 0;
+  while (extra[taken] === top + 1) top = extra[taken++] ;
+  state.vv[device] = top;
+  const left = taken ? extra.slice(taken) : extra;
+  if (left.length) state.extra[device] = left;
+  else delete state.extra[device];
 }
 
-async function syncScopeIndexed(args                                 )                       {
-  const { scope, state, transport, adapters, clock, device, options } = args;
-  const now = args.now ?? Date.now;
-  let published = 0;
-  const stamps = new Map                 ();
-  for (const adapter of adapters) {
-    if (adapter.publishAfterPull) stamps.set(adapter, await candidateStamps(state, adapter, clock, now()));
-    else published += (await publishAdapter(state, adapter, clock, device, now())).size;
-  }
-  await flush(state, transport, scope, device, now(), options);
-  const changed = await pull(state, transport, scope, clock, now(), options);
-  const held = holdsBack(state, now(), options?.damagedGiveUp ?? DEFAULTS.damagedGiveUp);
-  const keys = new Set([...state.unapplied, ...changed]);
-  const unapplied           = [];
-  let heldApply = false;
-  const applyHeld = () => !!options?.holdApply?.();
-  for (const adapter of adapters) {
-    const late = adapter.publishAfterPull && held ? new Set        () : await publishAdapter(state, adapter, clock, device, now(), stamps.get(adapter));
-    published += late.size;
-    for (const key of late) keys.delete(key);
-    heldApply ||= applyHeld();
-    const applied = !heldApply && (await applyAdapter(state, adapter, keys, now(), 2 * (options?.tombstoneTTL ?? DEFAULTS.tombstoneTTL), applyHeld));
-    heldApply ||= applyHeld();
-    if (!applied) for (const key of keys) if (key.startsWith(adapter.prefix)) unapplied.push(key);
-  }
-  state.unapplied = [...unapplied, ...[...keys].filter((k) => !adapters.some((a) => k.startsWith(a.prefix)))];
-  if (!heldApply && (!state.awaitRemote || Object.keys(state.seen).some((d) => d !== device))) {
-    state.joined = true;
-    delete state.awaitRemote;
-  }
-  await flush(state, transport, scope, device, now(), options);
-  const compacted = await compact(state, transport, scope, device, now(), options);
-  const snapshotBytes = compacted ? (newestSnapshot(Object.entries(state.files), device)?.[1].b ?? 0) : 0;
-  return { published, changed: changed.size, pending: state.pending, compacted, snapshotBytes };
+const isApplied = (state            , [device, seq]        ) => {
+  if (covered(state.vv, [device, seq])) return true;
+  const extra = state.extra[device];
+  return !!extra && extra[sortedIndex(extra, seq)] === seq;
+};
+
+function raiseApplied(state            , device        , seq        ) {
+  if (seq <= (state.vv[device] ?? 0)) return;
+  state.vv[device] = seq;
+  const extra = (state.extra[device] ?? []).filter((s) => s > seq);
+  let taken = 0;
+  for (let top = seq; extra[taken] === top + 1; top++) state.vv[device] = extra[taken++] ;
+  const left = extra.slice(taken);
+  if (left.length) state.extra[device] = left;
+  else delete state.extra[device];
 }
 
 });
-__define("packages/sync/src/scopeKeys.ts", function (exports, __require) {
-  __export(exports, "visible", () => visible);
-  __export(exports, "recordsWith", () => recordsWith);
-  __export(exports, "trackTouchedKeys", () => trackTouchedKeys);
-  __export(exports, "putRecord", () => putRecord);
-  __export(exports, "dropRecord", () => dropRecord);
-  __export(exports, "baseKeysWith", () => baseKeysWith);
-  __export(exports, "putBase", () => putBase);
-  __export(exports, "dropBase", () => dropBase);
-  __export(exports, "withBaseIndex", () => withBaseIndex);
-                                                              
+__define("packages/sync/src/syncFile.ts", function (exports, __require) {
+  __export(exports, "parseSyncFile", () => parseSyncFile);
+                                                                       
 
-function visible(state            , prefix        )                       {
-  const out = new Map                 ();
-  const { records } = state;
-  for (const key in records) {
-    if (!key.startsWith(prefix)) continue;
-    const value = records[key] .v;
-    if (value !== null) out.set(key, value);
-  }
-  return out;
-}
+const isObject = (v         )                               => typeof v === "object" && v !== null && !Array.isArray(v);
+const isCount = (v         )              => typeof v === "number" && Number.isSafeInteger(v) && v >= 0;
+const isTime = (v         )              => typeof v === "number" && Number.isFinite(v);
+const isMapOf = (v         , item                         ) => isObject(v) && Object.values(v).every(item);
+const isOrigin = (v         ) => Array.isArray(v) && v.length === 2 && typeof v[0] === "string" && isCount(v[1]);
+const isValue = (o                         ) => Object.prototype.hasOwnProperty.call(o, "v") && o.v !== undefined;
+const isOp = (v         ) => isObject(v) && typeof v.k === "string" && typeof v.h === "string" && isValue(v);
+const isRecord = (v         ) => isObject(v) && typeof v.h === "string" && isOrigin(v.o) && isValue(v);
 
-function recordsWith(state            , prefix        )                         {
-  const out                         = [];
-  const { records } = state;
-  for (const key in records) if (key.startsWith(prefix)) out.push([key, records[key] ]);
-  return out;
-}
-
-                                                                      
-const touching = new WeakMap                              ();
-
-function trackTouchedKeys(state            )                                             {
-  const touched              = { records: new Set(), base: new Set() };
-  let all = touching.get(state);
-  if (!all) touching.set(state, (all = new Set()));
-  all.add(touched);
-  return {
-    touched,
-    stop: () => {
-      all.delete(touched);
-      if (!all.size && touching.get(state) === all) touching.delete(state);
-    },
-  };
-}
-
-function touch(state            , kind                   , key        ) {
-  const all = touching.get(state);
-  if (all) for (const touched of all) touched[kind].add(key);
-}
-
-function putRecord(state            , key        , record            ) {
-  state.records[key] = record;
-  touch(state, "records", key);
-}
-
-function dropRecord(state            , key        ) {
-  if (!(key in state.records)) return;
-  delete state.records[key];
-  touch(state, "records", key);
-}
-
-                                                                     
-const baseIndexes = new WeakMap                       ();
-
-function baseKeysWith(state            , prefix        )                    {
-  const index = baseIndexes.get(state);
-  if (!index) return Object.keys(state.base).filter((key) => key.startsWith(prefix));
-  let keys = index.byPrefix.get(prefix);
-  if (!keys) {
-    keys = [];
-    const all = index.keys;
-    for (let i = 0; i < all.length; i++) if (all[i] .startsWith(prefix)) keys.push(all[i] );
-    index.byPrefix.set(prefix, keys);
-  }
-  return keys;
-}
-
-function putBase(state            , key        , json        ) {
-  const known = state.base[key];
-  if (known === json) return;
-  const index = known === undefined ? baseIndexes.get(state) : undefined;
-  state.base[key] = json;
-  touch(state, "base", key);
-  if (!index) return;
-  index.keys.push(key);
-  index.byPrefix.forEach((keys, prefix) => {
-    if (key.startsWith(prefix)) keys.push(key);
-  });
-}
-
-function dropBase(state            , key        ) {
-  if (!(key in state.base)) return;
-  delete state.base[key];
-  touch(state, "base", key);
-}
-
-async function withBaseIndex   (state            , run                  )             {
-  baseIndexes.set(state, { keys: Object.keys(state.base), byPrefix: new Map() });
+function parseSyncFile(payload        )                  {
+  let file         ;
   try {
-    return await run();
-  } finally {
-    baseIndexes.delete(state);
+    file = JSON.parse(payload);
+  } catch {
+    return null;
   }
+  if (!isObject(file) || file.v !== 1 || typeof file.device !== "string" || !isTime(file.at)) return null;
+  if (file.kind === "log") return isCount(file.seq) && Array.isArray(file.ops) && file.ops.every(isOp) ? (file           ) : null;
+  if (file.kind === "snapshot") {
+    return isMapOf(file.vv, isCount) && isMapOf(file.seen, isTime) && isMapOf(file.records, isRecord) ? (file                ) : null;
+  }
+  return null;
 }
 
 });
@@ -697,7 +807,7 @@ __define("packages/sync/src/fileHealth.ts", function (exports, __require) {
   __export(exports, "pullSettled", () => pullSettled);
                                                   
 
-                                                                                                            
+                                                                                                     
 
 function noteFileHealth(state            , files             , now        , giveUp        ) {
   const setAside = (id        ) => state.files[id]?.k === "bad";
@@ -726,13 +836,327 @@ const pullSettled = (state            ) =>
   state.pending === 0 && Object.keys(state.damaged).length === 0 && !Object.values(state.files).some((f) => f.k === "bad");
 
 });
+__define("packages/sync/src/applyBatches.ts", function (exports, __require) {
+  __export(exports, "ABSENT", () => ABSENT);
+  __export(exports, "UNSEEN_KEPT_MS", () => UNSEEN_KEPT_MS);
+  __export(exports, "launchOf", () => launchOf);
+  __export(exports, "isApplyBatch", () => isApplyBatch);
+  __export(exports, "validBatches", () => validBatches);
+  __export(exports, "writeAhead", () => writeAhead);
+  __export(exports, "cancelIfRaced", () => cancelIfRaced);
+  __export(exports, "settleOwedRetirements", () => settleOwedRetirements);
+  __export(exports, "finishBatch", () => finishBatch);
+  __export(exports, "startApplying", () => startApplying);
+  __export(exports, "queueRecovered", () => queueRecovered);
+  __export(exports, "awaitsRecovery", () => awaitsRecovery);
+  __export(exports, "countReapplied", () => countReapplied);
+  __export(exports, "failedTargets", () => failedTargets);
+  __export(exports, "takeReapplied", () => takeReapplied);
+const { canonical } = __require("packages/sync/src/canon.ts");
+const { visible } = __require("packages/sync/src/scopeKeys.ts");
+                                                                            
+
+const ABSENT = "null";
+const NATIVE_SAVE_MS = 30_000;
+const UNSEEN_KEPT_MS = 86_400_000;
+
+const thisLaunch = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+const steadyNow = () => (typeof performance !== "undefined" ? performance.now() : Date.now());
+
+const launchOf = (options               = {}) => options.launch ?? thisLaunch;
+const monotonicOf = (options               = {}) => (options.monotonic ?? steadyNow)();
+
+function isJsonOrNull(v         ) {
+  if (v === null) return true;
+  if (typeof v !== "string") return false;
+  try {
+    JSON.parse(v);
+    return true;
+  } catch {
+    return false;
+  }
+}
+const isStep = (v         ) => Array.isArray(v) && v.length === 2 && isJsonOrNull(v[0]) && isJsonOrNull(v[1]);
+const isFiniteNumber = (v         )              => typeof v === "number" && Number.isFinite(v);
+
+function isApplyBatch(v         )                  {
+  if (typeof v !== "object" || v === null || Array.isArray(v)) return false;
+  const b = v                           ;
+  if (!isFiniteNumber(b.id) || typeof b.p !== "string" || typeof b.l !== "string" || !isFiniteNumber(b.at)) return false;
+  if (b.done !== undefined && !isFiniteNumber(b.done)) return false;
+  if ([b.r, b.f, b.ok].some((flag) => flag !== undefined && flag !== 1)) return false;
+  if (b.cut !== undefined && !(Array.isArray(b.cut) && b.cut.every((key) => typeof key === "string"))) return false;
+  return typeof b.k === "object" && b.k !== null && !Array.isArray(b.k) && Object.values(b.k).every(isStep);
+}
+
+const validBatches = (v         )               => (Array.isArray(v) ? v.filter(isApplyBatch) : []);
+
+function noteBatch(state            , prefix        , keys                  , now        , options              )                    {
+  const view = visible(state, prefix);
+  const k                  = {};
+  let noted = false;
+  for (const key of keys) {
+    if (!key.startsWith(prefix)) continue;
+    const from = state.base[key];
+    const to = view.has(key) ? canonical(view.get(key)) : ABSENT;
+    if ((from ?? ABSENT) === to && !awaitsRecovery(state, key)) continue;
+    k[key] = [from ?? null, to === ABSENT ? null : to];
+    noted = true;
+  }
+  if (!noted) return null;
+  const batches = (state.applying ??= []);
+  const id = Math.max(now, ...batches.map((b) => b.id + 1));
+  const batch             = { id, p: prefix, l: launchOf(options), at: now, k };
+  batches.push(batch);
+  return batch;
+}
+
+function dropBatch(state            , batch            ) {
+  state.applying = state.applying?.filter((b) => b !== batch);
+  if (!state.applying?.length) delete state.applying;
+}
+
+                                                                       
+
+async function writeAhead(state            , prefix        , keys                  , now        , options               = {})                      {
+  const persist = options.persistApplying;
+  const batch = persist ? noteBatch(state, prefix, keys, now, options) : null;
+  if (!persist || !batch) return { batch: null, failed: false };
+  try {
+    await persist(batch);
+    return { batch, failed: false };
+  } catch (error) {
+    console.warn(`[sync] couldn't journal what ${prefix} is about to apply`, error);
+    dropBatch(state, batch);
+    return { batch: null, failed: true };
+  }
+}
+
+const owedRetirements = new WeakMap                          ();
+
+async function retire(state            , batch            , options              ) {
+  try {
+    await options.persistApplying?.({ ...batch, k: {} });
+  } catch (error) {
+    owedRetirements.set(state, [...(owedRetirements.get(state) ?? []).filter((b) => b.id !== batch.id), batch]);
+    throw error;
+  }
+}
+
+async function cancelIfRaced(state            , batch                   , raced             , options               = {})                   {
+  if (!batch || !Object.keys(batch.k).some((key) => raced.has(key))) return false;
+  dropBatch(state, batch);
+  await retire(state, batch, options);
+  return true;
+}
+
+async function settleOwedRetirements(state            , options               = {}) {
+  const owed = owedRetirements.get(state);
+  if (!owed?.length) return;
+  owedRetirements.delete(state);
+  for (const batch of owed) await retire(state, batch, options);
+}
+
+function finishBatch(batch                   , applied         , options               = {}) {
+  if (!batch) return;
+  batch.done = monotonicOf(options);
+  if (applied) batch.ok = 1;
+  else batch.f = 1;
+}
+
+function startApplying(state            , now        , options               = {}) {
+  takeReapplied(state);
+  if (!state.applying) return;
+  const launch = launchOf(options);
+  const steady = monotonicOf(options);
+  const saveMs = options.nativeSaveMs ?? NATIVE_SAVE_MS;
+  const retrying = new Set(state.unapplied);
+  const live = (b            ) => {
+    if (b.l === launch && b.f && Object.keys(b.k).some((key) => retrying.has(key))) return true;
+    if (b.l === launch) return b.done === undefined || steady - b.done < saveMs;
+    return !b.r || now - b.at < UNSEEN_KEPT_MS;
+  };
+  state.applying = state.applying.filter(live);
+  if (!state.applying.length) delete state.applying;
+}
+
+                                           
+const recovering = new WeakMap                        ();
+const reapplied = new WeakMap                    ();
+
+function queueRecovered(state            , keys          ) {
+  if (!keys.length) return;
+  const queued = new Set(state.unapplied);
+  let marks = recovering.get(state);
+  if (!marks) recovering.set(state, (marks = { pending: new Set() }));
+  for (const key of keys) {
+    marks.pending.add(key);
+    if (queued.has(key)) continue;
+    queued.add(key);
+    state.unapplied.push(key);
+  }
+}
+
+const awaitsRecovery = (state            , key        ) => !!recovering.get(state)?.pending.has(key);
+
+function countReapplied(state            , applied                  , deferred             , changed             ) {
+  const marks = recovering.get(state);
+  if (!marks?.pending.size) return;
+  let count = 0;
+  for (const key of applied) {
+    if (deferred.has(key) || !marks.pending.delete(key)) continue;
+    if (changed.has(key)) count++;
+  }
+  if (count) reapplied.set(state, (reapplied.get(state) ?? 0) + count);
+}
+
+function failedTargets(state            , prefix        , options               = {})                                  {
+  const launch = launchOf(options);
+  let targets                                  = null;
+  for (const batch of state.applying ?? []) {
+    if (!batch.f || batch.l !== launch || batch.p !== prefix) continue;
+    targets ??= new Map();
+    for (const [key, [, to]] of Object.entries(batch.k)) {
+      let held = targets.get(key);
+      if (!held) targets.set(key, (held = new Set()));
+      held.add(to ?? ABSENT);
+    }
+  }
+  return targets;
+}
+
+function takeReapplied(state            )         {
+  const count = reapplied.get(state) ?? 0;
+  reapplied.delete(state);
+  return count;
+}
+
+});
+__define("packages/sync/src/applyRecovery.ts", function (exports, __require) {
+  __export(exports, "recoverBatches", () => recoverBatches);
+const { canonical } = __require("packages/sync/src/canon.ts");
+const { ABSENT, launchOf, queueRecovered } = __require("packages/sync/src/applyBatches.ts");
+const { dropBase, putBase, visible } = __require("packages/sync/src/scopeKeys.ts");
+                                                                                        
+
+                                                                       
+                                                                                                        
+
+const nativeJson = (extraction            , key        ) => {
+  if (!extraction.values.has(key)) return ABSENT;
+  const value = extraction.values.get(key);
+  return extraction.json?.(key, value) ?? canonical(value);
+};
+
+function setBase(state            , key        , json        ) {
+  if (json === ABSENT) dropBase(state, key);
+  else putBase(state, key, json);
+}
+
+function chainsOf(batches              , skip                          ) {
+  const chains = new Map                ();
+  batches.forEach((batch, at) => {
+    for (const [key, [from, to]] of Object.entries(batch.k)) {
+      if (skip(key)) continue;
+      let chain = chains.get(key);
+      if (!chain) chains.set(key, (chain = []));
+      chain.push({ at, from: from ?? ABSENT, to: to ?? ABSENT, partial: !batch.ok });
+    }
+  });
+  return chains;
+}
+
+function valueAt(chain        , hypothesis        )         {
+  let last                  ;
+  for (const step of chain) if (step.at < hypothesis) last = step;
+  return last ? last.to : chain[0] .from;
+}
+
+const holds = (chain                    , json        ) => !!chain?.some((s) => s.to === json || s.from === json);
+const leftOver = (chain        , json        , savesWhole         ) => (!savesWhole || chain.some((s) => s.partial)) && holds(chain, json);
+
+                                                                                                                            
+
+async function tryHypothesis(state            , chains                     , hypothesis        , first            , extractWith                    )                 {
+  const overrides = new Map                ();
+  for (const [key, chain] of chains) overrides.set(key, valueAt(chain, hypothesis));
+  const baseJson = (key        ) => {
+    const json = overrides.has(key) ? overrides.get(key)  : state.base[key];
+    return json === ABSENT ? undefined : json;
+  };
+  const same = [...overrides].every(([key, json]) => (state.base[key] ?? ABSENT) === json);
+  const extraction = same || !extractWith ? first : await extractWith(baseJson);
+  if (!extraction) return { hypothesis, extraction: first, matches: -1, baseJson };
+  let matches = 0;
+  for (const [key, chain] of chains) {
+    if (extraction.ignore?.(key)) continue;
+    if (nativeJson(extraction, key) === valueAt(chain, hypothesis)) matches++;
+  }
+  return { hypothesis, extraction, matches, baseJson };
+}
+
+function keepUnresolved(state            , batches              , resolved             ) {
+  const kept               = [];
+  for (const batch of state.applying ?? []) {
+    if (!batches.includes(batch)) {
+      kept.push(batch);
+      continue;
+    }
+    const left = Object.entries(batch.k).filter(([key]) => !resolved.has(key));
+    const cut = Object.keys(batch.k).filter((key) => resolved.has(key));
+    if (left.length) kept.push({ ...batch, r: 1, ...(cut.length ? { cut: [...(batch.cut ?? []), ...cut] } : {}), k: Object.fromEntries(left) });
+  }
+  if (kept.length) state.applying = kept;
+  else delete state.applying;
+}
+
+async function recoverBatches(state            , prefix        , first            , extractWith                    , savesWhole         , options               = {})                             {
+  const launch = launchOf(options);
+  const batches = (state.applying ?? []).filter((b) => b.p === prefix && b.l !== launch).sort((a, z) => a.id - z.id);
+  if (!batches.length) return first;
+  const chains = chainsOf(batches, (key) => !!first.ignore?.(key));
+  if (!chains.size) {
+    if (batches.some((b) => !b.r)) keepUnresolved(state, batches, new Set());
+    return first;
+  }
+  let best               = null;
+  for (let hypothesis = 0; hypothesis <= batches.length; hypothesis++) {
+    const trial = await tryHypothesis(state, chains, hypothesis, first, extractWith);
+    if (trial.matches < 0) return null;
+    if (!best || trial.matches > best.matches) best = trial;
+  }
+  const { extraction, hypothesis, baseJson } = best ;
+  const view = visible(state, prefix);
+  const sinceRestart = chainsOf((state.applying ?? []).filter((b) => b.p === prefix && b.l === launch), (key) => !chains.has(key));
+  const resolved = new Set        ();
+  const queue           = [];
+  for (const [key, chain] of chains) {
+    if (extraction.ignore?.(key)) continue;
+    resolved.add(key);
+    const actual = nativeJson(extraction, key);
+    if (actual !== valueAt(chain, hypothesis) && !leftOver(chain, actual, savesWhole) && !holds(sinceRestart.get(key), actual)) {
+      setBase(state, key, baseJson(key) ?? ABSENT);
+      continue;
+    }
+    setBase(state, key, actual);
+    const target = view.has(key) ? canonical(view.get(key)) : ABSENT;
+    const recordBehind = target !== actual && chain.some((s) => s.from === target) && !chain.some((s) => s.to === target);
+    if (recordBehind) continue;
+    queue.push(key);
+  }
+  keepUnresolved(state, batches, resolved);
+  queueRecovered(state, queue);
+  return extraction;
+}
+
+});
 __define("packages/sync/src/scopeState.ts", function (exports, __require) {
   __export(exports, "emptyScope", () => emptyScope);
                                     
 
                                                    
                                                            
-                                                   
+                                            
 
                                                                                                 
                             
@@ -745,6 +1169,8 @@ __define("packages/sync/src/scopeState.ts", function (exports, __require) {
                                       
   
                                               
+
+                                                                                                                                                                                            
 
                                                                                                                               
 
@@ -764,6 +1190,7 @@ __define("packages/sync/src/scopeState.ts", function (exports, __require) {
                   
                         
                                                  
+                          
                      
                   
   
@@ -812,6 +1239,7 @@ const emptyScope = ()             => ({
                   
                   
                             
+                           
   
 
                           
@@ -827,8 +1255,11 @@ const emptyScope = ()             => ({
                                                     
                                                                                                                                                               
                                                 
+                                          
                               
                              
+                            
+                       
  
 
                             
@@ -842,6 +1273,10 @@ const emptyScope = ()             => ({
                          
                                                   
                             
+                                                         
+                  
+                        
+                           
   
 
 });
@@ -999,7 +1434,7 @@ const { fromLegacyUrl } = __require("packages/sync/src/companion/legacy.ts");
 const { buildView, dataOwner, defaultProfileId, liveProfiles } = __require("packages/sync/src/companion/view.ts");
 const { host, loaded, save, viewIsNew } = __require("packages/sync/src/companion/state.ts");
 
-                                                           
+                                                    
 
                           
                
@@ -1010,10 +1445,10 @@ const { host, loaded, save, viewIsNew } = __require("packages/sync/src/companion
                         
   
 
-                                                                                                                                 
-                                                                               
+                                                                                                                          
+                                                                        
 
-                           
+                    
                       
               
                        
@@ -1104,16 +1539,22 @@ async function runCompanionCycle(input            )                       {
     const tabsOf = new Map                    ();
     for (const t of input.tabs ?? []) {
       const p = profileOf(app, ids, fallback, t.p);
-      if (p) tabsOf.set(p, [...(tabsOf.get(p) ?? []), t]);
+      if (!p) continue;
+      const list = tabsOf.get(p);
+      if (list) list.push(t);
+      else tabsOf.set(p, [t]);
     }
     const visitsOf = new Map                                        ();
     const visited = (c.visited ??= {});
+    const removing = new WeakMap                       ();
     for (const v of input.visits ?? []) {
       const p = profileOf(app, ids, fallback, v.p);
       if (!p || typeof v.u !== "string" || !Array.isArray(v.vt)) continue;
       const o = owner.get(p) ?? p;
-      visitsOf.set(o, [...(visitsOf.get(o) ?? []), { ...v, p }]);
-      const newest = Math.max(...v.vt.filter((t) => Number.isFinite(t)));
+      const list = visitsOf.get(o);
+      if (list) list.push({ ...v, p });
+      else visitsOf.set(o, [{ ...v, p }]);
+      const newest = v.vt.reduce((m, t) => (Number.isFinite(t) ? Math.max(m, t) : m), -Infinity);
       const mine = (visited[profileScope(o)] ??= {});
       if (Number.isFinite(newest) && newest > (mine[v.u] ?? -Infinity)) mine[v.u] = newest;
     }
@@ -1150,7 +1591,11 @@ async function runCompanionCycle(input            )                       {
                 },
                 removed: (p, url) => {
                   const list = (c.removals [p] ??= []);
-                  if (!list.includes(url)) list.push(url);
+                  let listed = removing.get(list);
+                  if (!listed) removing.set(list, (listed = new Set(list)));
+                  if (listed.has(url)) return;
+                  listed.add(url);
+                  list.push(url);
                 },
                 ready: () => !!input.visits && (!!c.pulled[scope] || ++extracts > 1),
               }),
@@ -1250,7 +1695,8 @@ function companionSend(input                                                    
 function companionRemovalsDone(input                                                  ) {
   const c = loaded();
   for (const { profile, urls } of input.items) {
-    const left = (c.removals?.[profile] ?? []).filter((url) => !urls.includes(url));
+    const done = new Set(urls);
+    const left = (c.removals?.[profile] ?? []).filter((url) => !done.has(url));
     if (left.length) c.removals [profile] = left;
     else delete c.removals?.[profile];
   }
@@ -1345,7 +1791,7 @@ const isWebUrl = (url        ) => /^https?:\/\//i.test(url);
 const historyExpired = (key        , value         , now        ) =>
   key.startsWith("h:") && lastVisitOf(value                ) < now - HISTORY_WINDOW_MS;
 
-const lastVisitOf = (v                                 ) => (v && Array.isArray(v.vt) ? Math.max(0, ...v.vt) : 0);
+const lastVisitOf = (v                                 ) => (v && Array.isArray(v.vt) ? v.vt.reduce((m, t) => Math.max(m, t), 0) : 0);
 
 const dayOf = (at        ) => new Date(at).toISOString().slice(0, 10).replaceAll("-", "");
 
@@ -1390,7 +1836,9 @@ function unionTimes(a          , b          )           {
   return out.slice(-MAX_VISIT_TIMES);
 }
 
-                              
+const keptTimes = (times          )           => (times.length > MAX_VISIT_TIMES ? unionTimes(times.filter((t) => Number.isFinite(t)), []) : times);
+
+                       
                                          
                      
                     
@@ -1413,9 +1861,9 @@ function historyAdapter(ctx                )          {
         const entry = byUrl.get(v.u) ?? { title: "", times: [], profiles: new Set(), newest: 0 };
         const times = v.vt.filter((t) => Number.isFinite(t) && t >= since);
         if (!times.length) continue;
-        entry.times.push(...times);
+        for (const t of times) entry.times.push(t);
         entry.profiles.add(v.p);
-        const newest = Math.max(...times);
+        const newest = times.reduce((m, t) => Math.max(m, t), -Infinity);
         if (newest >= entry.newest) {
           entry.newest = newest;
           if (v.t) entry.title = v.t;
@@ -1441,8 +1889,8 @@ function historyAdapter(ctx                )          {
           values.set(key, { t: entry.title, n: local.length, vt: local }                       );
           continue;
         }
-        const knownTimes = Array.isArray(known.vt) ? known.vt.filter((t) => Number.isFinite(t)) : [];
-        const oldestKept = knownTimes.length >= MAX_VISIT_TIMES ? Math.min(...knownTimes) : -Infinity;
+        const knownTimes = keptTimes(Array.isArray(known.vt) ? known.vt.filter((t) => Number.isFinite(t)) : []);
+        const oldestKept = knownTimes.length >= MAX_VISIT_TIMES ? knownTimes.reduce((m, t) => Math.min(m, t), Infinity) : -Infinity;
         const missing = local.filter((t) => t >= oldestKept && !near(knownTimes, t));
         if (!missing.length) continue;
         const vt = unionTimes(knownTimes, local);
@@ -1461,8 +1909,8 @@ function historyAdapter(ctx                )          {
         const value = visible.get(key)                            ;
         if (value) {
           const mine = ctx.visited[url];
-          const times = Array.isArray(value.vt) ? value.vt : [];
-          const oldestKept = times.length >= MAX_VISIT_TIMES ? Math.min(...times) : -Infinity;
+          const times = keptTimes(Array.isArray(value.vt) ? value.vt : []);
+          const oldestKept = times.length >= MAX_VISIT_TIMES ? times.reduce((m, t) => Math.min(m, t), Infinity) : -Infinity;
           if (mine !== undefined && mine >= oldestKept && mine > (ctx.floors[url] ?? -Infinity) && !near(times, mine)) ctx.due(url);
           continue;
         }
@@ -1478,7 +1926,7 @@ function historyAdapter(ctx                )          {
   };
 }
 
-                           
+                    
                 
                              
                     
@@ -1518,7 +1966,7 @@ function sendsAdapter(ctx             )          {
   };
 }
 
-                               
+                        
                 
                     
                           
@@ -1540,7 +1988,10 @@ function bookmarksAdapter(ctx                 )          {
       const children = new Map                  ();
       for (const [k, v] of view) {
         const parent = (v                 ).p;
-        if (typeof parent === "string") children.set(parent, [...(children.get(parent) ?? []), k.slice(3)]);
+        if (typeof parent !== "string") continue;
+        const list = children.get(parent);
+        if (list) list.push(k.slice(3));
+        else children.set(parent, [k.slice(3)]);
       }
       const otherPositions = [...view]
         .filter(([, v]) => (v                 ).p === "other" && typeof (v                 ).pos === "string")
@@ -1570,7 +2021,7 @@ function bookmarksAdapter(ctx                 )          {
             const at = stack.pop() ;
             if (deletes.has(`bm:${at}`)) continue;
             deletes.add(`bm:${at}`);
-            stack.push(...(children.get(at) ?? []));
+            for (const child of children.get(at) ?? []) stack.push(child);
           }
         }
       }
@@ -1633,25 +2084,27 @@ __define("packages/sync/src/companion/view.ts", function (exports, __require) {
 const { visible } = __require("packages/sync/src/scope.ts");
                                                    
 const { fromLegacy } = __require("packages/sync/src/companion/legacy.ts");
+const { folderChildren } = __require("packages/sync/src/folders.ts");
 const { lastVisitOf } = __require("packages/sync/src/companion/adapters.ts");
 const { themeOf } = __require("packages/sync/src/companion/theme.ts");
 
-                                                                                            
+                                            
 
 const MAX_HISTORY_ITEMS = 2_000;
+const MAX_BOOKMARK_DEPTH = 100;
 
                             
                                                                                           
 
-                                                                                                                                        
-                                                                                                                          
-                                                                                             
-                                                                                
-                                                                                    
-                                                                                                                                   
+                                                                                                                                 
+                                                                                                                   
+                                                                                      
+                                                                         
+                                                                             
+                                                                                                                            
                                                                                                                                                             
-                                                                                            
-                           
+                                                                                     
+                    
                  
                
                        
@@ -1664,8 +2117,8 @@ const MAX_HISTORY_ITEMS = 2_000;
                             
                          
   
-                                                                                                                                                     
-                                                                                                                    
+                                                                                                                                              
+                                                                                                             
                                                                                                                         
 
 const str = (v         , fallback = "") => (typeof v === "string" ? v : fallback);
@@ -1866,25 +2319,14 @@ function bookmarkTree(scope                        )                 {
   const values = new Map                       ();
   for (const [k, v] of visible(scope, "bm:")) {
     const b = v                 ;
-    if (b && typeof b === "object" && (b.k === "u" || b.k === "f")) values.set(k.slice(3), fromLegacy(b));
+    if (k !== "bm:bar" && k !== "bm:other" && b && typeof b === "object" && (b.k === "u" || b.k === "f")) values.set(k.slice(3), fromLegacy(b));
   }
   const parentOf = new Map                ();
   for (const [key, v] of values) {
     const p = typeof v.p === "string" ? v.p : "other";
     parentOf.set(key, p === "bar" || p === "other" ? p : values.get(p)?.k === "f" ? p : "other");
   }
-  for (const key of [...values.keys()].sort()) {
-    const seen = new Set([key]);
-    for (let at = parentOf.get(key) ; parentOf.has(at); at = parentOf.get(at) ) {
-      if (seen.has(at)) {
-        parentOf.set(key, "other");
-        break;
-      }
-      seen.add(at);
-    }
-  }
-  const children = new Map                  ();
-  for (const key of values.keys()) children.set(parentOf.get(key) , [...(children.get(parentOf.get(key) ) ?? []), key]);
+  const children = folderChildren(parentOf, [...values.keys()].sort(), "other");
   const sorted = (parent        ) =>
     (children.get(parent) ?? []).map((key) => ({ key, pos: str(values.get(key) .pos) })).sort(byPosThenKey).map((x) => x.key);
   const node = (key        , root                        )               => {
@@ -1896,10 +2338,21 @@ function bookmarkTree(scope                        )                 {
       url: folder ? null : str(v.u),
       added: typeof v.a === "number" && Number.isFinite(v.a) ? v.a : 0,
       root,
-      children: folder ? sorted(key).map((k) => node(k, null)) : null,
+      children: folder ? [] : null,
     };
   };
-  return [...sorted("bar").map((k) => node(k, "bar")), ...sorted("other").map((k) => node(k, "other"))];
+  const tree = [...sorted("bar").map((k) => node(k, "bar")), ...sorted("other").map((k) => node(k, "other"))];
+  const folders = tree.map((folder) => ({ folder, depth: 1 }));
+  while (folders.length) {
+    const { folder, depth } = folders.pop() ;
+    if (!folder.children || depth >= MAX_BOOKMARK_DEPTH) continue;
+    for (const k of sorted(folder.key)) {
+      const child = node(k, null);
+      folder.children.push(child);
+      folders.push({ folder: child, depth: depth + 1 });
+    }
+  }
+  return tree;
 }
 
 function historyList(scope                        )                {
@@ -2006,13 +2459,43 @@ function buildView(scopes                            , me        )       {
 }
 
 });
+__define("packages/sync/src/folders.ts", function (exports, __require) {
+  __export(exports, "folderChildren", () => folderChildren);
+function folderChildren(parentOf                     , keys          , fallback        )                        {
+  const rooted = new Set        ();
+  for (const key of keys) {
+    const path = [key];
+    const seen = new Set([key]);
+    let looped = false;
+    for (let at = parentOf.get(key) ; parentOf.has(at) && !rooted.has(at); at = parentOf.get(at) ) {
+      if (seen.has(at)) {
+        parentOf.set(key, fallback);
+        looped = true;
+        break;
+      }
+      seen.add(at);
+      path.push(at);
+    }
+    if (looped) rooted.add(key);
+    else for (const at of path) rooted.add(at);
+  }
+  const children = new Map                  ();
+  for (const key of parentOf.keys()) {
+    const list = children.get(parentOf.get(key) );
+    if (list) list.push(key);
+    else children.set(parentOf.get(key) , [key]);
+  }
+  return children;
+}
+
+});
 __define("packages/sync/src/companion/theme.ts", function (exports, __require) {
   __export(exports, "themeOf", () => themeOf);
                                                    
 
-                                                                                                            
-                                                                    
-                                                                                                                                                         
+                                                                                                     
+                                                             
+                                                                                                                                                  
                                                                                                                                                             
 
 function hex(n         ) {
